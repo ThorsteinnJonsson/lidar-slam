@@ -11,7 +11,7 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 - [x] ROS1 bag reader — minimal in-house parser (`src/io/bag_reader.h/cpp`), lz4 + uncompressed chunks
 - [x] Parse IMU messages (`/imu/imu`) and LiDAR point clouds (`/os1_cloud_node1/points`) (`src/io/ros_deserializer.h/cpp`)
 - [x] Smoke test: 70,475 IMU measurements and 1,814 point clouds from `eee_03.bag`
-- [ ] Load extrinsic calibration from YAML (`T_Body_Lidar`, `T_Body_Imu`) — note: files use `!!opencv-matrix` tag, needs custom handling
+- [x] Load extrinsic calibration from YAML (`T_Body_Lidar`, `T_Body_Imu`) — strips `%YAML:1.0` directive and duplicate `gyro_std` key before yaml-cpp parsing (`src/io/calibration.h/cpp`)
 
 ---
 

@@ -67,6 +67,7 @@ pkg_check_modules(LZ4 REQUIRED liblz4)
 add_executable(lidar_slam
     src/main.cpp
     src/io/bag_reader.cpp
+    src/io/calibration.cpp
     src/io/ros_deserializer.cpp
 )
 
