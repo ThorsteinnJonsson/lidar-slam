@@ -13,6 +13,7 @@ target_compile_options(lidar_slam PRIVATE
     -Wextra
     -Wpedantic
     -stdlib=libc++
+    $<$<CONFIG:Debug>:-gdwarf-4>
 )
 
 target_link_options(lidar_slam PRIVATE
