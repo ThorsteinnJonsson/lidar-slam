@@ -15,13 +15,15 @@
 //
 // Usage:
 //   BagReader reader("path/to/file.bag");
-//   reader.read_messages({"/imu/imu", "/points"}, [](auto& topic, auto stamp_ns, auto data) {
+//   reader.read_messages({"/imu/imu", "/points"}, [](auto& topic, auto
+//   stamp_ns, auto data) {
 //       ...
 //   });
 class BagReader {
  public:
-  using Callback = std::function<void(const std::string& topic, uint64_t stamp_ns,
-                                      std::span<const std::byte> data)>;
+  using Callback =
+      std::function<void(const std::string& topic, uint64_t stamp_ns,
+                         std::span<const std::byte> data)>;
 
   explicit BagReader(std::filesystem::path path);
 

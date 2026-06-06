@@ -86,7 +86,8 @@ uint16_t read_as_u16(const std::byte* p, uint8_t datatype) {
 
 }  // namespace
 
-// ── sensor_msgs/Imu ───────────────────────────────────────────────────────────
+// ── sensor_msgs/Imu
+// ───────────────────────────────────────────────────────────
 //
 // Wire layout (little-endian):
 //   std_msgs/Header: uint32 seq, uint32 secs, uint32 nsecs, string frame_id
@@ -129,12 +130,14 @@ ImuMeasurement deserialize_imu(std::span<const std::byte> data) {
   return imu;
 }
 
-// ── sensor_msgs/PointCloud2 ───────────────────────────────────────────────────
+// ── sensor_msgs/PointCloud2
+// ───────────────────────────────────────────────────
 //
 // Wire layout:
 //   std_msgs/Header
 //   uint32 height, uint32 width
-//   PointField[] fields: uint32 count, then per field: string name, uint32 offset,
+//   PointField[] fields: uint32 count, then per field: string name, uint32
+//   offset,
 //                        uint8 datatype, uint32 count
 //   uint8 is_bigendian
 //   uint32 point_step, uint32 row_step
@@ -169,15 +172,16 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
     r.read<uint32_t>();  // count (always 1 for scalar fields)
   }
 
-  r.read<uint8_t>();                // is_bigendian
+  r.read<uint8_t>();  // is_bigendian
   uint32_t point_step = r.read<uint32_t>();
-  r.read<uint32_t>();               // row_step
+  r.read<uint32_t>();  // row_step
   uint32_t data_len = r.read<uint32_t>();
   auto point_data = r.read_bytes(data_len);
 
   // Find field descriptors by name. The Ouster driver may call the intensity
   // field "intensity" or "reflectivity" depending on version.
-  auto find = [&](std::initializer_list<const char*> names) -> const FieldDesc* {
+  auto find =
+      [&](std::initializer_list<const char*> names) -> const FieldDesc* {
     for (auto name : names) {
       for (auto& d : descs) {
         if (d.name == name) return &d;
@@ -199,7 +203,8 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
     cloud.x.push_back(fx ? read_as_float(p + fx->offset, fx->datatype) : 0.0f);
     cloud.y.push_back(fy ? read_as_float(p + fy->offset, fy->datatype) : 0.0f);
     cloud.z.push_back(fz ? read_as_float(p + fz->offset, fz->datatype) : 0.0f);
-    cloud.intensity.push_back(fi ? read_as_float(p + fi->offset, fi->datatype) : 0.0f);
+    cloud.intensity.push_back(fi ? read_as_float(p + fi->offset, fi->datatype)
+                                 : 0.0f);
     cloud.ring.push_back(fr ? read_as_u16(p + fr->offset, fr->datatype) : 0);
   }
 

@@ -17,7 +17,8 @@ constexpr uint8_t OP_MESSAGE_DATA = 0x02;
 constexpr uint8_t OP_CHUNK = 0x05;
 constexpr uint8_t OP_CONNECTION = 0x07;
 
-// ── File-level binary helpers ─────────────────────────────────────────────────
+// ── File-level binary helpers
+// ─────────────────────────────────────────────────
 
 void read_exact(std::ifstream& f, void* buf, size_t n) {
   f.read(static_cast<char*>(buf), static_cast<std::streamsize>(n));
@@ -38,9 +39,10 @@ std::vector<std::byte> read_vec(std::ifstream& f, size_t n) {
   return buf;
 }
 
-// ── Record header parsing ─────────────────────────────────────────────────────
-// A ROS bag record header is: [uint32 total_len] followed by repeated
-// [uint32 field_len][field_name '=' field_value] entries.
+// ── Record header parsing
+// ───────────────────────────────────────────────────── A ROS bag record header
+// is: [uint32 total_len] followed by repeated [uint32 field_len][field_name '='
+// field_value] entries.
 
 using FieldMap = std::unordered_map<std::string, std::vector<std::byte>>;
 
@@ -87,9 +89,11 @@ std::string field_str(const FieldMap& m, const std::string& k) {
   return std::string(reinterpret_cast<const char*>(v.data()), v.size());
 }
 
-// ── LZ4 decompression ─────────────────────────────────────────────────────────
+// ── LZ4 decompression
+// ─────────────────────────────────────────────────────────
 
-std::vector<std::byte> decompress_lz4(std::span<const std::byte> src, uint32_t uncompressed_size) {
+std::vector<std::byte> decompress_lz4(std::span<const std::byte> src,
+                                      uint32_t uncompressed_size) {
   std::vector<std::byte> dst(uncompressed_size);
 
   LZ4F_decompressionContext_t ctx{};
@@ -101,18 +105,21 @@ std::vector<std::byte> decompress_lz4(std::span<const std::byte> src, uint32_t u
 
   size_t dst_size = dst.size();
   size_t src_size = src.size();
-  rc = LZ4F_decompress(ctx, dst.data(), &dst_size, src.data(), &src_size, nullptr);
+  rc = LZ4F_decompress(ctx, dst.data(), &dst_size, src.data(), &src_size,
+                       nullptr);
   LZ4F_freeDecompressionContext(ctx);
 
   if (LZ4F_isError(rc)) {
-    throw std::runtime_error(std::string("LZ4F_decompress: ") + LZ4F_getErrorName(rc));
+    throw std::runtime_error(std::string("LZ4F_decompress: ") +
+                             LZ4F_getErrorName(rc));
   }
   return dst;
 }
 
 }  // namespace
 
-// ── BagReader ─────────────────────────────────────────────────────────────────
+// ── BagReader
+// ─────────────────────────────────────────────────────────────────
 
 BagReader::BagReader(std::filesystem::path path) : path_(std::move(path)) {
   scan_connections();
@@ -151,7 +158,8 @@ void BagReader::scan_connections() {
   }
 }
 
-void BagReader::read_messages(const std::vector<std::string>& topics, Callback cb) {
+void BagReader::read_messages(const std::vector<std::string>& topics,
+                              Callback cb) {
   std::unordered_set<uint32_t> filter;
   for (auto& [id, topic] : conn_topics_) {
     if (std::ranges::find(topics, topic) != topics.end()) {
@@ -211,7 +219,8 @@ void BagReader::process_chunk(std::span<const std::byte> data,
         uint32_t secs{}, nsecs{};
         std::memcpy(&secs, time_bytes.data(), 4);
         std::memcpy(&nsecs, time_bytes.data() + 4, 4);
-        uint64_t stamp_ns = static_cast<uint64_t>(secs) * 1'000'000'000ULL + nsecs;
+        uint64_t stamp_ns =
+            static_cast<uint64_t>(secs) * 1'000'000'000ULL + nsecs;
 
         cb(conn_topics_.at(conn_id), stamp_ns, r.read_bytes(data_len));
         continue;
