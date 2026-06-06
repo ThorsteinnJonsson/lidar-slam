@@ -18,10 +18,12 @@ add_executable(lidar_slam
     src/io/bag_reader.cpp
     src/io/calibration.cpp
     src/io/ros_deserializer.cpp
+    src/imu/buffer.cpp
+    src/imu/propagator.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
-target_include_directories(lidar_slam SYSTEM PRIVATE ${eigen_SOURCE_DIR})
+target_include_directories(lidar_slam SYSTEM PRIVATE ${eigen_SOURCE_DIR} ${sophus_SOURCE_DIR})
 
 target_compile_options(lidar_slam PRIVATE
     -Wall

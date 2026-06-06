@@ -18,9 +18,9 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 ## Phase 2: Math Utilities & IMU Propagation
 
 - [x] SO3 / SE3 Lie group operations — using Sophus (chosen for Ceres/g2o compatibility)
-- [ ] Forward integration of IMU (gyro → rotation, accel → velocity/position)
-- [ ] Covariance propagation for the error-state
-- [ ] IMU buffer with time-based lookup/interpolation
+- [x] Forward integration of IMU (gyro → rotation, accel → velocity/position) — midpoint rule (`src/imu/propagator.h/cpp`)
+- [x] Covariance propagation for the error-state — F_c/G_c Jacobians, F_d ≈ I + F_c·dt, Q_d = G_c·Q_c·G_c^T·dt (`src/imu/propagator.cpp`)
+- [x] IMU buffer with time-based lookup/interpolation — linear interp at boundaries (`src/imu/buffer.h/cpp`)
 
 ---
 
