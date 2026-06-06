@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Use libc++ globally so all dependencies share the same ABI
+add_compile_options(-stdlib=libc++)
+add_link_options(-stdlib=libc++ -lc++abi)
+
 # ── Dependencies ──────────────────────────────────────────────────────────────
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
@@ -42,8 +46,6 @@ set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-set(NANOFLANN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(NANOFLANN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(eigen yaml-cpp spdlog)
@@ -57,20 +59,24 @@ add_library(nanoflann_iface INTERFACE)
 add_library(nanoflann::nanoflann ALIAS nanoflann_iface)
 target_include_directories(nanoflann_iface INTERFACE ${nanoflann_SOURCE_DIR}/include)
 
+# lz4 for ROS bag decompression
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LZ4 REQUIRED liblz4)
+
 # ── Targets ───────────────────────────────────────────────────────────────────
-add_executable(lidar_slam src/main.cpp)
+add_executable(lidar_slam
+    src/main.cpp
+    src/io/bag_reader.cpp
+    src/io/ros_deserializer.cpp
+)
+
+target_include_directories(lidar_slam PRIVATE src)
 
 target_compile_options(lidar_slam PRIVATE
     -Wall
     -Wextra
     -Wpedantic
-    -stdlib=libc++
     $<$<CONFIG:Debug>:-gdwarf-4>
-)
-
-target_link_options(lidar_slam PRIVATE
-    -stdlib=libc++
-    -lc++abi
 )
 
 target_link_libraries(lidar_slam PRIVATE
@@ -78,4 +84,5 @@ target_link_libraries(lidar_slam PRIVATE
     yaml-cpp::yaml-cpp
     nanoflann::nanoflann
     spdlog::spdlog
+    ${LZ4_LIBRARIES}
 )
