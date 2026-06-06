@@ -17,7 +17,7 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 
 ## Phase 2: Math Utilities
 
-- [ ] SO3 / SE3 Lie group operations (exp, log, hat, vee, adjoint)
+- [ ] SO3 / SE3 Lie group operations (exp, log, hat, vee, adjoint) (compare Sophus vs rolling our own)
 
 ---
 
