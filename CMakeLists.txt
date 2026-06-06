@@ -32,6 +32,7 @@ target_compile_options(lidar_slam PRIVATE
 
 target_link_libraries(lidar_slam PRIVATE
     Eigen3::Eigen
+    Sophus::Sophus
     yaml-cpp::yaml-cpp
     nanoflann::nanoflann
     spdlog::spdlog

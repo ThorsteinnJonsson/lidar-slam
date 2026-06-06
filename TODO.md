@@ -15,35 +15,30 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 
 ---
 
-## Phase 2: Math Utilities
+## Phase 2: Math Utilities & IMU Propagation
 
-- [ ] SO3 / SE3 Lie group operations (exp, log, hat, vee, adjoint) (compare Sophus vs rolling our own)
-
----
-
-## Phase 3: IMU Propagation
-
+- [x] SO3 / SE3 Lie group operations — using Sophus (chosen for Ceres/g2o compatibility)
 - [ ] Forward integration of IMU (gyro → rotation, accel → velocity/position)
 - [ ] Covariance propagation for the error-state
 - [ ] IMU buffer with time-based lookup/interpolation
 
 ---
 
-## Phase 4: Point Cloud Preprocessing
+## Phase 3: Point Cloud Preprocessing
 
 - [ ] Motion undistortion — deskew each point using IMU-propagated poses
 - [ ] Voxel downsampling
 
 ---
 
-## Phase 5: Map
+## Phase 4: Map
 
 - [ ] Incremental KD-Tree (ikd-Tree) for nearest-neighbor search and dynamic updates
 - [ ] Point-to-plane association (find k-nearest neighbors, fit local plane)
 
 ---
 
-## Phase 6: State Estimation (iEKF)
+## Phase 5: State Estimation (iEKF)
 
 - [ ] Error-state representation (position, velocity, rotation, IMU biases, gravity)
 - [ ] Measurement model — point-to-plane residuals and Jacobians
@@ -52,14 +47,14 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 
 ---
 
-## Phase 7: Pipeline
+## Phase 6: Pipeline
 
 - [ ] Main SLAM loop tying all phases together
 - [ ] Initialization (static IMU init for gravity/bias estimation)
 
 ---
 
-## Phase 8: Evaluation
+## Phase 7: Evaluation
 
 - [ ] Pose trajectory output (TUM format)
 - [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics)

@@ -31,6 +31,24 @@ ctest --test-dir build/debug -R <test_name> --output-on-failure
 
 ## Toolchain
 
-- Compiler: clang-18 (`clang-18` / `clang++-18`)
+- Compiler: clang-18 (`clang-18` / `clang++-18`), stdlib: libc++-18 (set globally so all deps share the same ABI)
 - Build system: Ninja
 - C++ standard: C++23 (`-std=c++23`, extensions off)
+- Formatting: `clang-format-18` (Google style, `Standard: Latest`). Run after every code change:
+  ```bash
+  find src -name "*.h" -o -name "*.cpp" | xargs clang-format-18 -i
+  ```
+
+## Key dependencies
+
+Managed via CMake FetchContent (`cmake/dependencies.cmake`):
+
+| Library | Purpose |
+|---|---|
+| Eigen 3.4 | Linear algebra |
+| Sophus | SO3/SE3 Lie group math (chosen for Ceres/g2o compatibility) |
+| spdlog | Logging |
+| yaml-cpp | Calibration file parsing |
+| nanoflann | KD-tree for nearest-neighbour search |
+
+System deps: `liblz4-dev` (ROS bag decompression), `libc++-18-dev`, `libc++abi-18-dev`, `ninja-build`.
