@@ -71,6 +71,9 @@ add_executable(lidar_slam
 )
 
 target_include_directories(lidar_slam PRIVATE src)
+target_include_directories(lidar_slam SYSTEM PRIVATE
+    ${eigen_SOURCE_DIR}
+)
 
 target_compile_options(lidar_slam PRIVATE
     -Wall
