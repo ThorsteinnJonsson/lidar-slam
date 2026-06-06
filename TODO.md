@@ -6,11 +6,11 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 
 ## Phase 1: Foundation & I/O
 
-- [ ] Add Eigen as a dependency (via CMake FetchContent or vcpkg)
+- [x] Add Eigen, yaml-cpp, spdlog, nanoflann as dependencies (CMake FetchContent)
 - [ ] Core data types: `ImuMeasurement`, `PointCloud`, `State`
-- [ ] ROS1 bag reader (no ROS install required — use a standalone library e.g. `embag` or a minimal bag parser)
+- [ ] ROS1 bag reader — write minimal parser in-house (no standalone library available; ROS bag V2.0 format)
 - [ ] Parse IMU messages (`/imu/imu`) and LiDAR point clouds (`/os1_cloud_node1/points`)
-- [ ] Load extrinsic calibration from YAML (`T_Body_Lidar`, `T_Body_Imu`)
+- [ ] Load extrinsic calibration from YAML (`T_Body_Lidar`, `T_Body_Imu`) — note: files use `!!opencv-matrix` tag, needs custom handling
 - [ ] Smoke test: print IMU/point cloud counts from `eee_03.bag`
 
 ---
