@@ -1,0 +1,12 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
+      "compilerPath": "/usr/bin/clang++-18",
+      "cppStandard": "c++23",
+      "intelliSenseMode": "linux-clang-x64"
+    }
+  ],
+  "version": 4
+}
