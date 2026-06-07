@@ -2,6 +2,7 @@
 
 #include <Eigen/Geometry>
 #include <filesystem>
+#include <sophus/se3.hpp>
 #include <string>
 
 struct ImuCalibration {
@@ -22,3 +23,8 @@ struct LidarCalibration {
 
 ImuCalibration load_imu_calibration(const std::filesystem::path& path);
 LidarCalibration load_lidar_calibration(const std::filesystem::path& path);
+
+// Transform mapping points from the lidar frame into the IMU frame:
+//   T_imu_lidar = T_body_imu⁻¹ · T_body_lidar
+Sophus::SE3d imu_from_lidar(const ImuCalibration& imu,
+                            const LidarCalibration& lidar);

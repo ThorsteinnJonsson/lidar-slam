@@ -1,10 +1,14 @@
 #include <spdlog/spdlog.h>
 
+#include <cmath>
+#include <optional>
 #include <print>
 
+#include "imu/buffer.h"
 #include "io/bag_reader.h"
 #include "io/calibration.h"
 #include "io/ros_deserializer.h"
+#include "preprocess/deskew.h"
 #include "types.h"
 
 int main() {
@@ -33,8 +37,13 @@ int main() {
                lidar_cal.T_body_lidar.translation().y(),
                lidar_cal.T_body_lidar.translation().z());
 
+  const Sophus::SE3d T_imu_lidar = imu_from_lidar(imu_cal, lidar_cal);
+
   BagReader reader(dataset + "/eee_03.bag");
 
+  // Single pass: buffer all IMU, grab the first point cloud for a deskew demo.
+  ImuBuffer imu_buffer;
+  std::optional<PointCloud> first_cloud;
   size_t imu_count = 0;
   size_t cloud_count = 0;
 
@@ -43,15 +52,46 @@ int main() {
                            std::span<const std::byte> data) {
                          if (topic == imu_cal.topic) {
                            ++imu_count;
-                           (void)deserialize_imu(data);
+                           imu_buffer.push(deserialize_imu(data));
                          } else {
                            ++cloud_count;
-                           (void)deserialize_pointcloud2(data);
+                           if (!first_cloud) {
+                             first_cloud = deserialize_pointcloud2(data);
+                           }
                          }
                        });
 
   spdlog::info("IMU measurements : {}", imu_count);
   spdlog::info("Point clouds     : {}", cloud_count);
+
+  if (first_cloud && first_cloud->size() > 0) {
+    const PointCloud& cloud = *first_cloud;
+
+    // Scan window from per-point time offsets.
+    const auto [min_off, max_off] =
+        std::minmax_element(cloud.t_offset_ns.begin(), cloud.t_offset_ns.end());
+    const uint64_t base_ns = cloud.stamp.to_nsec();
+    const uint64_t t_start = base_ns + *min_off;
+    const uint64_t t_end = base_ns + *max_off;
+    spdlog::info("First scan: {} points, span {:.1f} ms", cloud.size(),
+                 (t_end - t_start) * 1e-6);
+
+    if (imu_buffer.covers(t_start, t_end)) {
+      const auto traj = build_scan_trajectory(imu_buffer, t_start, t_end);
+      const PointCloud undist = deskew(cloud, traj, T_imu_lidar, t_end);
+
+      double max_shift = 0.0;
+      for (size_t i = 0; i < cloud.size(); ++i) {
+        const double dx = undist.x[i] - cloud.x[i];
+        const double dy = undist.y[i] - cloud.y[i];
+        const double dz = undist.z[i] - cloud.z[i];
+        max_shift = std::max(max_shift, std::sqrt(dx * dx + dy * dy + dz * dz));
+      }
+      spdlog::info("Deskew max point shift : {:.4f} m", max_shift);
+    } else {
+      spdlog::warn("IMU buffer does not cover the first scan window");
+    }
+  }
 
   return 0;
 }

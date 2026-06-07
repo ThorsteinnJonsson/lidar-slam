@@ -118,3 +118,12 @@ LidarCalibration load_lidar_calibration(const std::filesystem::path& path) {
 
   return cal;
 }
+
+Sophus::SE3d imu_from_lidar(const ImuCalibration& imu,
+                            const LidarCalibration& lidar) {
+  const Eigen::Isometry3d iso = imu.T_body_imu.inverse() * lidar.T_body_lidar;
+  // Normalize the rotation block before handing it to Sophus, which asserts a
+  // valid SO3 element (the YAML matrices may not be exactly orthonormal).
+  const Eigen::Quaterniond q(iso.linear());
+  return Sophus::SE3d(q.normalized(), iso.translation());
+}
