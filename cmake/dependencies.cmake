@@ -29,13 +29,23 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
+FetchContent_Declare(
+    sophus
+    GIT_REPOSITORY git@github.com:strasdat/Sophus.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+)
+
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SOPHUS_USE_BASIC_LOGGING ON CACHE BOOL "" FORCE)
+set(BUILD_SOPHUS_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_SOPHUS_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(eigen yaml-cpp spdlog)
+FetchContent_MakeAvailable(eigen yaml-cpp spdlog sophus)
 
 # nanoflann is header-only — skip its CMake to avoid uninstall target conflict with Eigen
 FetchContent_GetProperties(nanoflann)

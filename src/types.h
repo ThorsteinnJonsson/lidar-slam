@@ -12,6 +12,13 @@ struct Timestamp {
   uint64_t to_nsec() const noexcept {
     return static_cast<uint64_t>(secs) * 1'000'000'000ULL + nsecs;
   }
+
+  double to_sec() const noexcept { return secs + nsecs * 1e-9; }
+
+  static Timestamp from_nsec(uint64_t ns) {
+    return {static_cast<uint32_t>(ns / 1'000'000'000ULL),
+            static_cast<uint32_t>(ns % 1'000'000'000ULL)};
+  }
 };
 
 struct ImuMeasurement {
