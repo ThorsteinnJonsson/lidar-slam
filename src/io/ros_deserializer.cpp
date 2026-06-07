@@ -84,6 +84,33 @@ uint16_t read_as_u16(const std::byte* p, uint8_t datatype) {
   }
 }
 
+uint32_t read_as_u32(const std::byte* p, uint8_t datatype) {
+  switch (datatype) {
+    case PF_UINT8: {
+      uint8_t v;
+      std::memcpy(&v, p, 1);
+      return v;
+    }
+    case PF_UINT16: {
+      uint16_t v;
+      std::memcpy(&v, p, 2);
+      return v;
+    }
+    case PF_UINT32: {
+      uint32_t v;
+      std::memcpy(&v, p, 4);
+      return v;
+    }
+    case PF_FLOAT32: {
+      float v;
+      std::memcpy(&v, p, 4);
+      return static_cast<uint32_t>(v);
+    }
+    default:
+      return 0;
+  }
+}
+
 }  // namespace
 
 // ── sensor_msgs/Imu
@@ -195,6 +222,8 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
   const auto* fz = find({"z"});
   const auto* fi = find({"intensity", "reflectivity"});
   const auto* fr = find({"ring"});
+  // Per-point time offset (ns from header stamp); needed for deskewing.
+  const auto* ft = find({"t", "time", "timestamp"});
 
   cloud.reserve(num_points);
 
@@ -206,6 +235,8 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
     cloud.intensity.push_back(fi ? read_as_float(p + fi->offset, fi->datatype)
                                  : 0.0f);
     cloud.ring.push_back(fr ? read_as_u16(p + fr->offset, fr->datatype) : 0);
+    cloud.t_offset_ns.push_back(ft ? read_as_u32(p + ft->offset, ft->datatype)
+                                   : 0);
   }
 
   return cloud;

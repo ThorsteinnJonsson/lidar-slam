@@ -30,13 +30,14 @@ struct ImuMeasurement {
 
 // Struct-of-arrays layout for cache-friendly access in SLAM inner loops
 struct PointCloud {
-  Timestamp stamp;
+  Timestamp stamp;  // header stamp; per-point time = stamp + t_offset_ns[i]
   std::string frame_id;
   std::vector<float> x;
   std::vector<float> y;
   std::vector<float> z;
   std::vector<float> intensity;
   std::vector<uint16_t> ring;
+  std::vector<uint32_t> t_offset_ns;  // per-point time offset from stamp (ns)
 
   size_t size() const noexcept { return x.size(); }
 
@@ -46,5 +47,6 @@ struct PointCloud {
     z.reserve(n);
     intensity.reserve(n);
     ring.reserve(n);
+    t_offset_ns.reserve(n);
   }
 };
