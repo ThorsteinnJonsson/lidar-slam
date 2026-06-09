@@ -21,6 +21,7 @@ add_executable(lidar_slam
     src/imu/buffer.cpp
     src/imu/propagator.cpp
     src/preprocess/deskew.cpp
+    src/preprocess/voxel_grid.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
