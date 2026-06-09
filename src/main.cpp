@@ -9,6 +9,7 @@
 #include "io/calibration.h"
 #include "io/ros_deserializer.h"
 #include "preprocess/deskew.h"
+#include "preprocess/voxel_grid.h"
 #include "types.h"
 
 int main() {
@@ -88,6 +89,11 @@ int main() {
         max_shift = std::max(max_shift, std::sqrt(dx * dx + dy * dy + dz * dz));
       }
       spdlog::info("Deskew max point shift : {:.4f} m", max_shift);
+
+      const PointCloud filtered = voxel_downsample(undist, 0.5);
+      spdlog::info("Voxel downsample: {} -> {} points ({:.1f}% kept)",
+                   undist.size(), filtered.size(),
+                   100.0 * filtered.size() / undist.size());
     } else {
       spdlog::warn("IMU buffer does not cover the first scan window");
     }
