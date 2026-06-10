@@ -24,10 +24,18 @@ ln -sf build/debug/compile_commands.json compile_commands.json
 
 ## Testing
 
+GoogleTest, fetched via FetchContent.
+
 ```bash
 ctest --test-dir build/debug --output-on-failure
 ctest --test-dir build/debug -R <test_name> --output-on-failure
 ```
+
+Add new test files to `tests/CMakeLists.txt`. Our option is `LIDAR_SLAM_BUILD_TESTS`
+(ON by default) — deliberately not named `BUILD_TESTING`, and we force `BUILD_TESTING
+OFF` for the fetched dependencies so their test suites don't register into CTest
+(Eigen otherwise adds 900+). If dependency tests ever show up in `ctest`, reconfigure
+from a clean build dir — they come from stale CTest files.
 
 ## Toolchain
 
@@ -36,7 +44,7 @@ ctest --test-dir build/debug -R <test_name> --output-on-failure
 - C++ standard: C++23 (`-std=c++23`, extensions off)
 - Formatting: `clang-format-18` (Google style, `Standard: Latest`). Run after every code change:
   ```bash
-  find src -name "*.h" -o -name "*.cpp" | xargs clang-format-18 -i
+  find src tests -name "*.h" -o -name "*.cpp" | xargs clang-format-18 -i
   ```
 
 ## Key dependencies
