@@ -36,18 +36,16 @@ plus `eee_03.bag`).
 ## Tests
 
 Tests use GoogleTest and are built by default (disable with
-`-DLIDAR_SLAM_BUILD_TESTS=OFF` at configure time). Run the suite via CTest — scope
-to the `tests` subdirectory so the fetched dependencies' own test suites don't get
-pulled in:
+`-DLIDAR_SLAM_BUILD_TESTS=OFF` at configure time). Run the suite via CTest:
 
 ```bash
-ctest --test-dir build/debug/tests --output-on-failure
+ctest --test-dir build/debug --output-on-failure
 ```
 
 Run a single test by name:
 
 ```bash
-ctest --test-dir build/debug/tests -R <test_name> --output-on-failure
+ctest --test-dir build/debug -R <test_name> --output-on-failure
 ```
 
 Or run the test binary directly, with GoogleTest filters:

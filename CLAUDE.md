@@ -24,18 +24,18 @@ ln -sf build/debug/compile_commands.json compile_commands.json
 
 ## Testing
 
-GoogleTest, fetched via FetchContent. Scope CTest to the `tests` subdirectory —
-running it against `build/debug` would also pick up the fetched dependencies' own
-test suites (Eigen registers its tests into CTest regardless of `BUILD_TESTING`).
+GoogleTest, fetched via FetchContent.
 
 ```bash
-ctest --test-dir build/debug/tests --output-on-failure
-ctest --test-dir build/debug/tests -R <test_name> --output-on-failure
+ctest --test-dir build/debug --output-on-failure
+ctest --test-dir build/debug -R <test_name> --output-on-failure
 ```
 
 Add new test files to `tests/CMakeLists.txt`. Our option is `LIDAR_SLAM_BUILD_TESTS`
-(ON by default) — deliberately not named `BUILD_TESTING` to avoid enabling the
-dependencies' test suites.
+(ON by default) — deliberately not named `BUILD_TESTING`, and we force `BUILD_TESTING
+OFF` for the fetched dependencies so their test suites don't register into CTest
+(Eigen otherwise adds 900+). If dependency tests ever show up in `ctest`, reconfigure
+from a clean build dir — they come from stale CTest files.
 
 ## Toolchain
 
