@@ -26,7 +26,7 @@ class IkdTree {
 
   // k nearest neighbors of `query`. Outputs are sorted by ascending squared
   // distance and sized to min(k, size()).
-  void knn(const Eigen::Vector3f& query, int k,
+  void knn(const Eigen::Vector3f& query, size_t k,
            std::vector<Eigen::Vector3f>& out_points,
            std::vector<float>& out_dist2) const;
 
@@ -67,7 +67,7 @@ class IkdTree {
   static std::unique_ptr<Node> build_range(Eigen::Vector3f* first,
                                            Eigen::Vector3f* last);
 
-  void search(const Node* node, const Eigen::Vector3f& query, int k,
+  void search(const Node* node, const Eigen::Vector3f& query, size_t k,
               std::vector<HeapItem>& heap) const;
 
   bool check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,

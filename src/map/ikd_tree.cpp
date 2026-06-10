@@ -79,12 +79,12 @@ void IkdTree::build(std::vector<Eigen::Vector3f> points) {
   root_ = build_range(points.data(), points.data() + points.size());
 }
 
-void IkdTree::search(const Node* node, const Eigen::Vector3f& query, int k,
+void IkdTree::search(const Node* node, const Eigen::Vector3f& query, size_t k,
                      std::vector<HeapItem>& heap) const {
   if (!node) return;
 
   const float d2 = (node->point - query).squaredNorm();
-  if (static_cast<int>(heap.size()) < k) {
+  if (heap.size() < k) {
     heap.push_back({d2, node->point});
     std::push_heap(heap.begin(), heap.end(), heap_less);
   } else if (d2 < heap.front().dist2) {
@@ -103,7 +103,7 @@ void IkdTree::search(const Node* node, const Eigen::Vector3f& query, int k,
   // bounding box could still hold a closer neighbor than the current k-th best.
   search(near, query, k, heap);
   if (far) {
-    const bool heap_full = static_cast<int>(heap.size()) >= k;
+    const bool heap_full = heap.size() >= k;
     if (!heap_full || point_box_dist2(query, far->range_min, far->range_max) <
                           heap.front().dist2) {
       search(far, query, k, heap);
@@ -111,15 +111,15 @@ void IkdTree::search(const Node* node, const Eigen::Vector3f& query, int k,
   }
 }
 
-void IkdTree::knn(const Eigen::Vector3f& query, int k,
+void IkdTree::knn(const Eigen::Vector3f& query, size_t k,
                   std::vector<Eigen::Vector3f>& out_points,
                   std::vector<float>& out_dist2) const {
   out_points.clear();
   out_dist2.clear();
-  if (!root_ || k <= 0) return;
+  if (!root_ || k == 0) return;
 
   std::vector<HeapItem> heap;
-  heap.reserve(static_cast<size_t>(k));
+  heap.reserve(k);
   search(root_.get(), query, k, heap);
 
   // The heap is a max-heap by distance; emit in ascending distance order.
