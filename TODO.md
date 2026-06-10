@@ -37,8 +37,31 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 
 ## Phase 4: Map
 
-- [ ] Incremental KD-Tree (ikd-Tree) for nearest-neighbor search and dynamic updates
-- [ ] Point-to-plane association (find k-nearest neighbors, fit local plane)
+Incremental k-d tree (ikd-Tree, Cai et al. 2021) as the map backend, built up in
+testable milestones. Test harness added with 4.1 — first tests in the project.
+
+- [ ] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
+      subtree AABB + treesize attributes, recursive `knn()` with AABB pruning and a
+      bounded max-heap (`src/map/ikd_tree.h/cpp`). Gate: k-NN matches brute-force
+      and nanoflann oracles on random clouds; structural invariants hold.
+- [ ] 4.2 Incremental ops — `insert()`, lazy point/box delete (deleted/treedeleted/
+      pushdown labels), pull-up/push-down attribute maintenance, single-threaded
+      partial rebuild on balance (`max(size_L, size_R) > α_bal·(size−1)`) or garbage
+      (`invalid_num > α_del·size`) criteria. Gate: random insert/delete sequences
+      match brute force; invariants hold.
+- [ ] 4.3 Point-to-plane association — kNN(5) → plane fit (solve `A·n = −1`,
+      normalize; reject on neighbor-distance / residual thresholds) → correspondences
+      for the iEKF.
+
+Deferred refinements (revisit after the iEKF works):
+- [ ] Parallel two-thread rebuild for large subtrees — the paper's `N_max` scheme: a
+      worker rebuilds a copy while the main thread logs ops on the old subtree and
+      replays them on swap. Single-threaded rebuild stalls briefly on big rebuilds;
+      parallelize only if profiling shows it matters.
+- [ ] Voxel-downsample-on-insert — FAST-LIO2 keeps the map at fixed resolution by
+      snapping each insert to a voxel and keeping only the point nearest the voxel
+      center. For now map resolution is managed by box-delete + the per-scan
+      `voxel_downsample()`.
 
 ---
 
