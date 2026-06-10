@@ -40,10 +40,13 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 Incremental k-d tree (ikd-Tree, Cai et al. 2021) as the map backend, built up in
 testable milestones. Test harness added with 4.1 — first tests in the project.
 
-- [ ] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
+- [x] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
       subtree AABB + treesize attributes, recursive `knn()` with AABB pruning and a
-      bounded max-heap (`src/map/ikd_tree.h/cpp`). Gate: k-NN matches brute-force
-      and nanoflann oracles on random clouds; structural invariants hold.
+      bounded max-heap (`src/map/ikd_tree.h/cpp`). `validate()` checks structural
+      invariants. Tested against brute-force and nanoflann oracles + edge cases
+      (`tests/ikd_tree_test.cpp`, 7 tests). Per-node deleted/treedeleted/pushdown/
+      invalid_num fields reserved but unused. Note: compiled into `unit_tests` only;
+      wires into `lidar_slam` in 4.3 when the estimator consumes it.
 - [ ] 4.2 Incremental ops — `insert()`, lazy point/box delete (deleted/treedeleted/
       pushdown labels), pull-up/push-down attribute maintenance, single-threaded
       partial rebuild on balance (`max(size_L, size_R) > α_bal·(size−1)`) or garbage
