@@ -36,6 +36,13 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY git@github.com:google/googletest.git
+    GIT_TAG        v1.15.2
+    GIT_SHALLOW    TRUE
+)
+
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -44,8 +51,16 @@ set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SOPHUS_USE_BASIC_LOGGING ON CACHE BOOL "" FORCE)
 set(BUILD_SOPHUS_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_SOPHUS_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+# Suppress the dependencies' own test suites (Eigen et al. key off BUILD_TESTING).
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(eigen yaml-cpp spdlog sophus)
+
+# GoogleTest only when building tests (keeps non-test builds lean).
+if(LIDAR_SLAM_BUILD_TESTS)
+    FetchContent_MakeAvailable(googletest)
+endif()
 
 # nanoflann is header-only — skip its CMake to avoid uninstall target conflict with Eigen
 FetchContent_GetProperties(nanoflann)

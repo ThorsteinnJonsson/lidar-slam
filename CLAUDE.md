@@ -24,10 +24,18 @@ ln -sf build/debug/compile_commands.json compile_commands.json
 
 ## Testing
 
+GoogleTest, fetched via FetchContent. Scope CTest to the `tests` subdirectory —
+running it against `build/debug` would also pick up the fetched dependencies' own
+test suites (Eigen registers its tests into CTest regardless of `BUILD_TESTING`).
+
 ```bash
-ctest --test-dir build/debug --output-on-failure
-ctest --test-dir build/debug -R <test_name> --output-on-failure
+ctest --test-dir build/debug/tests --output-on-failure
+ctest --test-dir build/debug/tests -R <test_name> --output-on-failure
 ```
+
+Add new test files to `tests/CMakeLists.txt`. Our option is `LIDAR_SLAM_BUILD_TESTS`
+(ON by default) — deliberately not named `BUILD_TESTING` to avoid enabling the
+dependencies' test suites.
 
 ## Toolchain
 
@@ -36,7 +44,7 @@ ctest --test-dir build/debug -R <test_name> --output-on-failure
 - C++ standard: C++23 (`-std=c++23`, extensions off)
 - Formatting: `clang-format-18` (Google style, `Standard: Latest`). Run after every code change:
   ```bash
-  find src -name "*.h" -o -name "*.cpp" | xargs clang-format-18 -i
+  find src tests -name "*.h" -o -name "*.cpp" | xargs clang-format-18 -i
   ```
 
 ## Key dependencies
