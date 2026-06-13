@@ -31,6 +31,12 @@ class IkdTree {
   void insert(const std::vector<Eigen::Vector3f>& points);
   void insert(const Eigen::Vector3f& point);
 
+  // Logically delete every point inside the closed axis-aligned box
+  // [box_min, box_max]. Deletion is lazy: points are flagged, not physically
+  // removed (a later rebuild reclaims them). size() and k-NN ignore them.
+  void remove_box(const Eigen::Vector3f& box_min,
+                  const Eigen::Vector3f& box_max);
+
   // k nearest neighbors of `query`. Outputs are sorted by ascending squared
   // distance and sized to min(k, size()).
   void knn(const Eigen::Vector3f& query, size_t k,
@@ -80,6 +86,12 @@ class IkdTree {
   // a raw pointer) so a future rebuild can swap the whole subtree in place.
   static void insert_at(std::unique_ptr<Node>& slot,
                         const Eigen::Vector3f& point);
+
+  // Box-delete within the subtree held by `slot` (slot, not raw pointer, so a
+  // future rebuild can swap the subtree in place).
+  static void remove_box_at(std::unique_ptr<Node>& slot,
+                            const Eigen::Vector3f& box_min,
+                            const Eigen::Vector3f& box_max);
 
   void search(const Node* node, const Eigen::Vector3f& query, size_t k,
               std::vector<HeapItem>& heap) const;

@@ -19,6 +19,12 @@ float point_box_dist2(const Eigen::Vector3f& q, const Eigen::Vector3f& lo,
   return d2;
 }
 
+// Whether a point lies within the closed axis-aligned box [lo, hi].
+bool point_in_box(const Eigen::Vector3f& p, const Eigen::Vector3f& lo,
+                  const Eigen::Vector3f& hi) {
+  return (p.array() >= lo.array()).all() && (p.array() <= hi.array()).all();
+}
+
 }  // namespace
 
 bool IkdTree::heap_less(const HeapItem& a, const HeapItem& b) {
@@ -135,19 +141,62 @@ void IkdTree::insert(const std::vector<Eigen::Vector3f>& points) {
   for (const auto& p : points) insert_at(root_, p);
 }
 
+void IkdTree::remove_box_at(std::unique_ptr<Node>& slot,
+                            const Eigen::Vector3f& box_min,
+                            const Eigen::Vector3f& box_max) {
+  Node* n = slot.get();
+  if (!n || n->tree_deleted) return;
+
+  // No overlap between the delete box and this subtree's bounding box: skip.
+  if ((n->range_max.array() < box_min.array()).any() ||
+      (n->range_min.array() > box_max.array()).any()) {
+    return;
+  }
+
+  // Subtree fully inside the delete box: flag the whole subtree deleted lazily,
+  // deferring the per-child relabel to push_down when (if) we next descend
+  // here.
+  if ((n->range_min.array() >= box_min.array()).all() &&
+      (n->range_max.array() <= box_max.array()).all()) {
+    n->deleted = true;
+    n->tree_deleted = true;
+    n->invalid_num = n->treesize;
+    n->pushdown = true;
+    return;
+  }
+
+  // Partial overlap: push any pending deletion down, test this node's own
+  // point, recurse into both children, then refresh cached attributes.
+  push_down(n);
+  if (!n->deleted && point_in_box(n->point, box_min, box_max))
+    n->deleted = true;
+  remove_box_at(n->left, box_min, box_max);
+  remove_box_at(n->right, box_min, box_max);
+  pull_up(n);
+}
+
+void IkdTree::remove_box(const Eigen::Vector3f& box_min,
+                         const Eigen::Vector3f& box_max) {
+  remove_box_at(root_, box_min, box_max);
+}
+
 void IkdTree::search(const Node* node, const Eigen::Vector3f& query, size_t k,
                      std::vector<HeapItem>& heap) const {
-  if (!node) return;
+  // Skip whole subtrees that are lazily deleted; the per-node `deleted` check
+  // below skips individual deleted points within live subtrees.
+  if (!node || node->tree_deleted) return;
 
-  const float d2 = (node->point - query).squaredNorm();
-  if (heap.size() < k) {
-    heap.push_back({d2, node->point});
-    std::push_heap(heap.begin(), heap.end(), heap_less);
-  } else if (d2 < heap.front().dist2) {
-    // Replace the current worst (heap front) with the closer point.
-    std::pop_heap(heap.begin(), heap.end(), heap_less);
-    heap.back() = {d2, node->point};
-    std::push_heap(heap.begin(), heap.end(), heap_less);
+  if (!node->deleted) {
+    const float d2 = (node->point - query).squaredNorm();
+    if (heap.size() < k) {
+      heap.push_back({d2, node->point});
+      std::push_heap(heap.begin(), heap.end(), heap_less);
+    } else if (d2 < heap.front().dist2) {
+      // Replace the current worst (heap front) with the closer point.
+      std::pop_heap(heap.begin(), heap.end(), heap_less);
+      heap.back() = {d2, node->point};
+      std::push_heap(heap.begin(), heap.end(), heap_less);
+    }
   }
 
   const uint8_t a = node->axis;

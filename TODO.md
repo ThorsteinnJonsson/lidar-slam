@@ -53,28 +53,29 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
       `insert` takes a **batch** (`std::vector<Vec3>`) with single-point insert
       internally. Refactor recursion to operate on `unique_ptr<Node>&` slots so a
       rebuild can swap a subtree in place. Sub-steps:
-  - [ ] Attribute plumbing — extend `pull_up` to maintain `invalid_num`
-        (`deleted + L.invalid_num + R.invalid_num`) and `treedeleted`
-        (`deleted && L.treedeleted && R.treedeleted`); add `push_down` (lazy
-        propagation of `treedeleted`/`deleted` into children before descending).
-  - [ ] `insert` — recursive descend-by-axis, attach leaf, `pull_up` on unwind,
-        rebalance check on unwind.
-  - [ ] `delete(box)` — AABB-vs-box: fully-inside → mark `treedeleted`/`pushdown`
-        (`invalid_num = treesize`); fully-outside → skip; partial → `push_down`,
-        test own point, recurse, `pull_up`, rebalance check.
+  - [x] Attribute plumbing — `pull_up` maintains `invalid_num`
+        (`deleted + L.invalid_num + R.invalid_num`) and `tree_deleted`
+        (`deleted && L.tree_deleted && R.tree_deleted`); `push_down` lazily
+        propagates a pending subtree-wide deletion into children before descending.
+  - [x] `insert` (batch + single) — recursive descend-by-axis on `unique_ptr&`
+        slots, attach leaf, `pull_up` on unwind. (Rebalance hook deferred to the
+        partial-rebuild step.) `size()` now reports the live count.
+  - [x] `remove_box` — AABB-vs-box: fully-inside → mark `tree_deleted`/`pushdown`
+        (`invalid_num = treesize`); no-overlap → skip; partial → `push_down`, test
+        own point, recurse, `pull_up`. (Rebalance hook deferred.)
+  - [x] `knn` update — skips `deleted` points and `tree_deleted` subtrees; AABB
+        pruning stays valid (box still bounds physical points, conservative).
   - [ ] Partial rebuild (single-threaded) — on unwind test balance
         (`max(size_L, size_R) > α_bal·(size−1)`) and garbage (`invalid_num >
         α_del·size`); rebuild the topmost violating node by flattening live points
-        (skip `treedeleted` subtrees) and reusing `build_range`. α_bal ≈ 0.7,
-        α_del ≈ 0.5 as tunable constants.
-  - [ ] `knn` update — skip `deleted` points and `treedeleted` subtrees; AABB
-        pruning stays valid (box still bounds physical points, conservative).
-  - [ ] `validate` update — verify `invalid_num`/`treedeleted` consistency bottom-up
-        and account for pending `pushdown` without mutating (it's `const`).
-  - [ ] Tests — random insert / box-delete / interleaved sequences vs a brute-force
-        live set (knn matches), `validate()` after each batch; adversarial cases:
-        sorted inserts force rebalance, mass-delete forces garbage-collection rebuild
-        (assert the tree actually shrinks / stays balanced).
+        (skip `tree_deleted` subtrees) and reusing `build_range`. α_bal ≈ 0.7,
+        α_del ≈ 0.5 as tunable constants. Wire the hook into `insert`/`remove_box`.
+  - [ ] `validate` update — verify `invalid_num`/`tree_deleted` consistency
+        bottom-up and account for pending `pushdown` without mutating (it's `const`).
+  - [x] Tests (ops) — insert (from-empty, batch-after-build, single) and box-delete
+        (vs brute-force live set, delete-all, delete-then-insert) all match brute
+        force; `validate()` holds. Still TODO: adversarial rebalance/GC cases once
+        the partial rebuild lands.
 - [ ] 4.3 Point-to-plane association — kNN(5) → plane fit (solve `A·n = −1`,
       normalize; reject on neighbor-distance / residual thresholds) → correspondences
       for the iEKF.

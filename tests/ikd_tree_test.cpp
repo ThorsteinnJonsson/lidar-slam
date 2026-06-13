@@ -63,6 +63,20 @@ std::vector<float> nanoflann_dist2(const std::vector<Vec3>& pts,
   return d2;
 }
 
+bool in_box(const Vec3& p, const Vec3& lo, const Vec3& hi) {
+  return (p.array() >= lo.array()).all() && (p.array() <= hi.array()).all();
+}
+
+// The points of `pts` that fall outside the closed box [lo, hi] — the live set
+// expected after a box delete.
+std::vector<Vec3> outside_box(const std::vector<Vec3>& pts, const Vec3& lo,
+                              const Vec3& hi) {
+  std::vector<Vec3> out;
+  for (const auto& p : pts)
+    if (!in_box(p, lo, hi)) out.push_back(p);
+  return out;
+}
+
 // Compare two ascending squared-distance sequences. Distances are computed from
 // identical float points, so they agree to within float rounding.
 void expect_dist2_match(const std::vector<float>& got,
@@ -222,6 +236,81 @@ TEST(IkdTree, InsertIntoEmptyTreeSinglePoint) {
   tree.knn(Vec3(0, 0, 0), 5, got_pts, got_d2);
   ASSERT_EQ(got_pts.size(), 1u);
   EXPECT_FLOAT_EQ(got_d2[0], 14.0f);
+}
+
+TEST(IkdTree, RemoveBoxMatchesBruteForce) {
+  std::mt19937 rng(555);
+  std::uniform_real_distribution<float> coord(-60.0f, 60.0f);
+  const Vec3 lo(-20, -20, -20);
+  const Vec3 hi(20, 20, 20);
+
+  for (int n : {50, 500, 2000}) {
+    const auto pts = random_cloud(n, /*seed=*/400 + n);
+    IkdTree tree;
+    tree.build(pts);
+    tree.remove_box(lo, hi);
+
+    const auto live = outside_box(pts, lo, hi);
+    EXPECT_EQ(tree.size(), live.size()) << "n=" << n;
+    EXPECT_TRUE(tree.validate()) << "n=" << n;
+
+    for (int k : {1, 5, 10}) {
+      for (int q = 0; q < 20; ++q) {
+        const Vec3 query(coord(rng), coord(rng), coord(rng));
+        std::vector<Vec3> got_pts;
+        std::vector<float> got_d2;
+        tree.knn(query, k, got_pts, got_d2);
+        expect_dist2_match(got_d2, brute_force_dist2(live, query, k));
+        // No returned point lies in the deleted region.
+        for (const auto& p : got_pts) EXPECT_FALSE(in_box(p, lo, hi));
+      }
+    }
+  }
+}
+
+TEST(IkdTree, RemoveBoxEverything) {
+  const auto pts = random_cloud(500, /*seed=*/7);
+  IkdTree tree;
+  tree.build(pts);
+  tree.remove_box(Vec3(-1000, -1000, -1000), Vec3(1000, 1000, 1000));
+
+  EXPECT_EQ(tree.size(), 0u);
+  EXPECT_TRUE(tree.validate());
+
+  std::vector<Vec3> got_pts;
+  std::vector<float> got_d2;
+  tree.knn(Vec3(0, 0, 0), 5, got_pts, got_d2);
+  EXPECT_TRUE(got_pts.empty());
+  EXPECT_TRUE(got_d2.empty());
+}
+
+TEST(IkdTree, RemoveBoxThenInsert) {
+  const auto base = random_cloud(1000, /*seed=*/13);
+  const Vec3 lo(-20, -20, -20);
+  const Vec3 hi(20, 20, 20);
+  IkdTree tree;
+  tree.build(base);
+  tree.remove_box(lo, hi);
+
+  // Insert fresh points — some land back inside the deleted region and must
+  // come alive again (insert revives, it doesn't inherit the deleted label).
+  const auto added = random_cloud(300, /*seed=*/14, /*extent=*/15.0f);
+  tree.insert(added);
+
+  std::vector<Vec3> live = outside_box(base, lo, hi);
+  live.insert(live.end(), added.begin(), added.end());
+  EXPECT_EQ(tree.size(), live.size());
+  EXPECT_TRUE(tree.validate());
+
+  std::mt19937 rng(321);
+  std::uniform_real_distribution<float> coord(-60.0f, 60.0f);
+  for (int q = 0; q < 50; ++q) {
+    const Vec3 query(coord(rng), coord(rng), coord(rng));
+    std::vector<Vec3> got_pts;
+    std::vector<float> got_d2;
+    tree.knn(query, 8, got_pts, got_d2);
+    expect_dist2_match(got_d2, brute_force_dist2(live, query, 8));
+  }
 }
 
 TEST(IkdTree, DuplicatePoints) {
