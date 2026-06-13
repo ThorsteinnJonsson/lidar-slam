@@ -164,6 +164,66 @@ TEST(IkdTree, KnnMatchesNanoflann) {
   }
 }
 
+TEST(IkdTree, InsertFromEmptyMatchesBruteForce) {
+  std::mt19937 rng(2024);
+  std::uniform_real_distribution<float> coord(-60.0f, 60.0f);
+
+  for (int n : {1, 5, 50, 500, 2000}) {
+    const auto pts = random_cloud(n, /*seed=*/300 + n);
+    IkdTree tree;
+    for (const auto& p : pts) tree.insert(p);
+
+    EXPECT_EQ(tree.size(), static_cast<size_t>(n)) << "n=" << n;
+    EXPECT_TRUE(tree.validate()) << "n=" << n;
+
+    for (int k : {1, 5, 10}) {
+      for (int q = 0; q < 10; ++q) {
+        const Vec3 query(coord(rng), coord(rng), coord(rng));
+        std::vector<Vec3> got_pts;
+        std::vector<float> got_d2;
+        tree.knn(query, k, got_pts, got_d2);
+        expect_dist2_match(got_d2, brute_force_dist2(pts, query, k));
+      }
+    }
+  }
+}
+
+TEST(IkdTree, BatchInsertAfterBuild) {
+  const auto pts = random_cloud(1000, /*seed=*/42);
+  // Build with the first half, then add the rest as a batch insert.
+  const std::vector<Vec3> head(pts.begin(), pts.begin() + 500);
+  const std::vector<Vec3> tail(pts.begin() + 500, pts.end());
+  IkdTree tree;
+  tree.build(head);
+  tree.insert(tail);
+
+  EXPECT_EQ(tree.size(), 1000u);
+  EXPECT_TRUE(tree.validate());
+
+  std::mt19937 rng(99);
+  std::uniform_real_distribution<float> coord(-60.0f, 60.0f);
+  for (int q = 0; q < 50; ++q) {
+    const Vec3 query(coord(rng), coord(rng), coord(rng));
+    std::vector<Vec3> got_pts;
+    std::vector<float> got_d2;
+    tree.knn(query, 8, got_pts, got_d2);
+    expect_dist2_match(got_d2, brute_force_dist2(pts, query, 8));
+  }
+}
+
+TEST(IkdTree, InsertIntoEmptyTreeSinglePoint) {
+  IkdTree tree;
+  tree.insert(Vec3(1, 2, 3));
+  EXPECT_EQ(tree.size(), 1u);
+  EXPECT_TRUE(tree.validate());
+
+  std::vector<Vec3> got_pts;
+  std::vector<float> got_d2;
+  tree.knn(Vec3(0, 0, 0), 5, got_pts, got_d2);
+  ASSERT_EQ(got_pts.size(), 1u);
+  EXPECT_FLOAT_EQ(got_d2[0], 14.0f);
+}
+
 TEST(IkdTree, DuplicatePoints) {
   std::vector<Vec3> pts(100, Vec3(2, 2, 2));
   pts.push_back(Vec3(5, 5, 5));

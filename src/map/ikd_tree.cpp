@@ -107,6 +107,34 @@ void IkdTree::build(std::vector<Eigen::Vector3f> points) {
   root_ = build_range(points.data(), points.data() + points.size());
 }
 
+void IkdTree::insert_at(std::unique_ptr<Node>& slot,
+                        const Eigen::Vector3f& point) {
+  if (!slot) {
+    // Reached an empty slot — attach the point as a fresh leaf. A leaf's axis
+    // is unused until it gains children; leave it at 0 and let a later rebuild
+    // assign a proper max-spread axis.
+    slot = std::make_unique<Node>();
+    slot->point = point;
+    pull_up(slot.get());
+    return;
+  }
+  // Propagate any pending subtree-wide deletion before descending, so the new
+  // leaf lands live rather than under a stale deleted label.
+  push_down(slot.get());
+  if (point[slot->axis] < slot->point[slot->axis]) {
+    insert_at(slot->left, point);
+  } else {
+    insert_at(slot->right, point);
+  }
+  pull_up(slot.get());
+}
+
+void IkdTree::insert(const Eigen::Vector3f& point) { insert_at(root_, point); }
+
+void IkdTree::insert(const std::vector<Eigen::Vector3f>& points) {
+  for (const auto& p : points) insert_at(root_, p);
+}
+
 void IkdTree::search(const Node* node, const Eigen::Vector3f& query, size_t k,
                      std::vector<HeapItem>& heap) const {
   if (!node) return;
@@ -161,7 +189,9 @@ void IkdTree::knn(const Eigen::Vector3f& query, size_t k,
 }
 
 size_t IkdTree::size() const noexcept {
-  return root_ ? static_cast<size_t>(root_->treesize) : 0;
+  // Live point count: physical nodes minus those lazily deleted but not yet
+  // collected by a rebuild.
+  return root_ ? static_cast<size_t>(root_->treesize - root_->invalid_num) : 0;
 }
 
 bool IkdTree::check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,

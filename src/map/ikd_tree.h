@@ -24,13 +24,21 @@ class IkdTree {
   // The argument is consumed (reordered in place) for an in-place median split.
   void build(std::vector<Eigen::Vector3f> points);
 
+  // Insert points into the existing tree (cheaper than a rebuild when the map
+  // changes by a small fraction each scan). Balance is kept by the partial
+  // rebuild added in a later step; until then a degenerate insert order can
+  // leave the tree unbalanced (k-NN stays correct regardless).
+  void insert(const std::vector<Eigen::Vector3f>& points);
+  void insert(const Eigen::Vector3f& point);
+
   // k nearest neighbors of `query`. Outputs are sorted by ascending squared
   // distance and sized to min(k, size()).
   void knn(const Eigen::Vector3f& query, size_t k,
            std::vector<Eigen::Vector3f>& out_points,
            std::vector<float>& out_dist2) const;
 
-  // Number of points in the tree.
+  // Number of live points in the tree (excludes lazily-deleted points still
+  // physically present pending a rebuild).
   size_t size() const noexcept;
 
   // Verify structural invariants (subtree sizes, bounding boxes, split
@@ -67,6 +75,11 @@ class IkdTree {
 
   static std::unique_ptr<Node> build_range(Eigen::Vector3f* first,
                                            Eigen::Vector3f* last);
+
+  // Insert a point into the subtree held by `slot`, operating on the slot (not
+  // a raw pointer) so a future rebuild can swap the whole subtree in place.
+  static void insert_at(std::unique_ptr<Node>& slot,
+                        const Eigen::Vector3f& point);
 
   void search(const Node* node, const Eigen::Vector3f& query, size_t k,
               std::vector<HeapItem>& heap) const;
