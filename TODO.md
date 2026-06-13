@@ -65,17 +65,23 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
         own point, recurse, `pull_up`. (Rebalance hook deferred.)
   - [x] `knn` update — skips `deleted` points and `tree_deleted` subtrees; AABB
         pruning stays valid (box still bounds physical points, conservative).
-  - [ ] Partial rebuild (single-threaded) — on unwind test balance
-        (`max(size_L, size_R) > α_bal·(size−1)`) and garbage (`invalid_num >
-        α_del·size`); rebuild the topmost violating node by flattening live points
-        (skip `tree_deleted` subtrees) and reusing `build_range`. α_bal ≈ 0.7,
-        α_del ≈ 0.5 as tunable constants. Wire the hook into `insert`/`remove_box`.
+  - [x] Partial rebuild (single-threaded) — on unwind test balance
+        (`max(size_L, size_R) > α_bal·(treesize−1)`) and garbage (`invalid_num >
+        α_del·treesize`); rebuild via `flatten` (live points only, skipping
+        `tree_deleted`) + `build_range`, swapped into the `unique_ptr` slot.
+        Constants α_bal=0.7, α_del=0.5, plus kMinRebuildSize=10 to skip churn on
+        tiny subtrees. Hook wired into `insert_at`/`remove_box_at`. Rebuilds the
+        lowest violating node on unwind (each parent re-checks afterward), not
+        strictly the topmost; strict-topmost is a possible refinement. Added
+        `physical_size()`/`height()` introspection for tests.
   - [ ] `validate` update — verify `invalid_num`/`tree_deleted` consistency
         bottom-up and account for pending `pushdown` without mutating (it's `const`).
   - [x] Tests (ops) — insert (from-empty, batch-after-build, single) and box-delete
-        (vs brute-force live set, delete-all, delete-then-insert) all match brute
-        force; `validate()` holds. Still TODO: adversarial rebalance/GC cases once
-        the partial rebuild lands.
+        (vs brute-force live set, delete-all, delete-then-insert) match brute force;
+        plus rebuild coverage: SortedInsertStaysBalanced (height < 4·log2 n),
+        RebuildReclaimsDeletedGarbage (physical size collapses toward live), and a
+        20-round InterleavedInsertDeleteMatchesBruteForce. `validate()` holds
+        throughout.
 - [ ] 4.3 Point-to-plane association — kNN(5) → plane fit (solve `A·n = −1`,
       normalize; reject on neighbor-distance / residual thresholds) → correspondences
       for the iEKF.

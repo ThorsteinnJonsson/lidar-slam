@@ -47,6 +47,14 @@ class IkdTree {
   // physically present pending a rebuild).
   size_t size() const noexcept;
 
+  // Physical node count including lazily-deleted nodes not yet reclaimed by a
+  // rebuild. For tests and diagnostics; normal callers want size().
+  size_t physical_size() const noexcept;
+
+  // Height of the tree (longest root-to-leaf path), 0 when empty. For tests and
+  // diagnostics.
+  int height() const noexcept;
+
   // Verify structural invariants (subtree sizes, bounding boxes, split
   // ordering). Used by the tests and as a debugging aid for the 4.2 incremental
   // ops.
@@ -76,8 +84,20 @@ class IkdTree {
 
   static bool heap_less(const HeapItem& a, const HeapItem& b);
   static int node_size(const Node* n);
+  static int node_height(const Node* n);
   static void pull_up(Node* n);
   static void push_down(Node* n);
+
+  // Whether the subtree at `n` violates the balance or garbage criteria and
+  // should be rebuilt.
+  static bool needs_rebuild(const Node* n);
+
+  // Collect the live (non-deleted) points of a subtree into `out`.
+  static void flatten(const Node* n, std::vector<Eigen::Vector3f>& out);
+
+  // Rebuild the subtree held by `slot` from its live points: balanced, with
+  // dead nodes physically reclaimed.
+  static void rebuild(std::unique_ptr<Node>& slot);
 
   static std::unique_ptr<Node> build_range(Eigen::Vector3f* first,
                                            Eigen::Vector3f* last);

@@ -313,6 +313,85 @@ TEST(IkdTree, RemoveBoxThenInsert) {
   }
 }
 
+TEST(IkdTree, SortedInsertStaysBalanced) {
+  // Inserting in sorted order is the worst case for an un-rebalanced k-d tree:
+  // it degenerates into a linked list of height n. The partial rebuild must
+  // keep the height close to log2(n).
+  IkdTree tree;
+  const int n = 5000;
+  for (int i = 0; i < n; ++i) {
+    const float f = static_cast<float>(i);
+    tree.insert(Vec3(f, f, f));
+  }
+
+  EXPECT_EQ(tree.size(), static_cast<size_t>(n));
+  EXPECT_TRUE(tree.validate());
+
+  const int log2n = static_cast<int>(std::ceil(std::log2(n)));
+  EXPECT_LT(tree.height(), 4 * log2n) << "height=" << tree.height();
+}
+
+TEST(IkdTree, RebuildReclaimsDeletedGarbage) {
+  const auto pts = random_cloud(4000, /*seed=*/77);
+  IkdTree tree;
+  tree.build(pts);
+  EXPECT_EQ(tree.physical_size(), 4000u);
+
+  // Delete a large region that partially overlaps the root box (so the deletion
+  // recurses and unwinds, triggering garbage-collection rebuilds) and removes
+  // the majority of points.
+  const Vec3 lo(-50, -50, -50);
+  const Vec3 hi(40, 40, 40);
+  tree.remove_box(lo, hi);
+
+  const auto live = outside_box(pts, lo, hi);
+  EXPECT_EQ(tree.size(), live.size());
+  EXPECT_TRUE(tree.validate());
+
+  // Garbage was physically reclaimed: the physical node count collapsed from
+  // 4000 toward the live count instead of staying at 4000.
+  EXPECT_LT(tree.physical_size(), pts.size());
+  EXPECT_LE(tree.physical_size(), live.size() * 3 / 2 + 16);
+  EXPECT_GE(tree.physical_size(), tree.size());
+}
+
+TEST(IkdTree, InterleavedInsertDeleteMatchesBruteForce) {
+  std::mt19937 rng(2718);
+  std::uniform_real_distribution<float> coord(-50.0f, 50.0f);
+
+  std::vector<Vec3> model = random_cloud(1000, /*seed=*/1);
+  IkdTree tree;
+  tree.build(model);
+
+  for (int round = 0; round < 20; ++round) {
+    if (round % 2 == 0) {
+      const auto add = random_cloud(200, /*seed=*/1000 + round);
+      tree.insert(add);
+      model.insert(model.end(), add.begin(), add.end());
+    } else {
+      const Vec3 c(coord(rng), coord(rng), coord(rng));
+      const Vec3 lo = c - Vec3(15, 15, 15);
+      const Vec3 hi = c + Vec3(15, 15, 15);
+      tree.remove_box(lo, hi);
+      std::vector<Vec3> kept;
+      for (const auto& p : model)
+        if (!in_box(p, lo, hi)) kept.push_back(p);
+      model = std::move(kept);
+    }
+
+    EXPECT_EQ(tree.size(), model.size()) << "round=" << round;
+    EXPECT_TRUE(tree.validate()) << "round=" << round;
+
+    for (int q = 0; q < 10; ++q) {
+      const Vec3 query(coord(rng), coord(rng), coord(rng));
+      std::vector<Vec3> got_pts;
+      std::vector<float> got_d2;
+      tree.knn(query, 5, got_pts, got_d2);
+      expect_dist2_match(got_d2, brute_force_dist2(model, query, 5));
+    }
+  }
+}
+
 TEST(IkdTree, DuplicatePoints) {
   std::vector<Vec3> pts(100, Vec3(2, 2, 2));
   pts.push_back(Vec3(5, 5, 5));

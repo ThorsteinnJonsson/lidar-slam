@@ -25,6 +25,14 @@ bool point_in_box(const Eigen::Vector3f& p, const Eigen::Vector3f& lo,
   return (p.array() >= lo.array()).all() && (p.array() <= hi.array()).all();
 }
 
+// Rebuild thresholds. A subtree is rebuilt when one child holds more than
+// kAlphaBalance of it (imbalance) or more than kAlphaDelete of it is lazily
+// deleted (garbage). Subtrees at or below kMinRebuildSize are left alone: the
+// criteria are noisy at tiny sizes and rebalancing them churns for no benefit.
+constexpr float kAlphaBalance = 0.7f;
+constexpr float kAlphaDelete = 0.5f;
+constexpr int kMinRebuildSize = 10;
+
 }  // namespace
 
 bool IkdTree::heap_less(const HeapItem& a, const HeapItem& b) {
@@ -32,6 +40,11 @@ bool IkdTree::heap_less(const HeapItem& a, const HeapItem& b) {
 }
 
 int IkdTree::node_size(const Node* n) { return n ? n->treesize : 0; }
+
+int IkdTree::node_height(const Node* n) {
+  if (!n) return 0;
+  return 1 + std::max(node_height(n->left.get()), node_height(n->right.get()));
+}
 
 // Recompute a node's cached attributes from its children (bottom-up). The
 // bounding box spans all physical points, deleted ones included, they stay in
@@ -74,6 +87,33 @@ void IkdTree::push_down(Node* n) {
     child->pushdown = true;
   }
   n->pushdown = false;
+}
+
+bool IkdTree::needs_rebuild(const Node* n) {
+  if (n->treesize <= kMinRebuildSize) return false;
+  const int sl = node_size(n->left.get());
+  const int sr = node_size(n->right.get());
+  const bool imbalanced =
+      std::max(sl, sr) > kAlphaBalance * static_cast<float>(n->treesize - 1);
+  const bool garbage =
+      static_cast<float>(n->invalid_num) > kAlphaDelete * n->treesize;
+  return imbalanced || garbage;
+}
+
+void IkdTree::flatten(const Node* n, std::vector<Eigen::Vector3f>& out) {
+  if (!n || n->tree_deleted) return;
+  if (!n->deleted) out.push_back(n->point);
+  flatten(n->left.get(), out);
+  flatten(n->right.get(), out);
+}
+
+void IkdTree::rebuild(std::unique_ptr<Node>& slot) {
+  std::vector<Eigen::Vector3f> pts;
+  pts.reserve(slot->treesize);
+  flatten(slot.get(), pts);
+  // Assigning a fresh balanced subtree frees the old one (dead nodes included).
+  // An all-deleted subtree flattens to nothing and collapses to an empty slot.
+  slot = build_range(pts.data(), pts.data() + pts.size());
 }
 
 std::unique_ptr<IkdTree::Node> IkdTree::build_range(Eigen::Vector3f* first,
@@ -133,6 +173,7 @@ void IkdTree::insert_at(std::unique_ptr<Node>& slot,
     insert_at(slot->right, point);
   }
   pull_up(slot.get());
+  if (needs_rebuild(slot.get())) rebuild(slot);
 }
 
 void IkdTree::insert(const Eigen::Vector3f& point) { insert_at(root_, point); }
@@ -173,6 +214,7 @@ void IkdTree::remove_box_at(std::unique_ptr<Node>& slot,
   remove_box_at(n->left, box_min, box_max);
   remove_box_at(n->right, box_min, box_max);
   pull_up(n);
+  if (needs_rebuild(n)) rebuild(slot);
 }
 
 void IkdTree::remove_box(const Eigen::Vector3f& box_min,
@@ -242,6 +284,12 @@ size_t IkdTree::size() const noexcept {
   // collected by a rebuild.
   return root_ ? static_cast<size_t>(root_->treesize - root_->invalid_num) : 0;
 }
+
+size_t IkdTree::physical_size() const noexcept {
+  return root_ ? static_cast<size_t>(root_->treesize) : 0;
+}
+
+int IkdTree::height() const noexcept { return node_height(root_.get()); }
 
 bool IkdTree::check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,
                     Eigen::Vector3f& out_hi) const {
