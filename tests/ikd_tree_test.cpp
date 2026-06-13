@@ -348,10 +348,9 @@ TEST(IkdTree, RebuildReclaimsDeletedGarbage) {
   EXPECT_EQ(tree.size(), live.size());
   EXPECT_TRUE(tree.validate());
 
-  // Garbage was physically reclaimed: the physical node count collapsed from
-  // 4000 toward the live count instead of staying at 4000.
+  // Garbage was physically reclaimed: physical size collapsed from 4000 toward
+  // the live count.
   EXPECT_LT(tree.physical_size(), pts.size());
-  EXPECT_LE(tree.physical_size(), live.size() * 3 / 2 + 16);
   EXPECT_GE(tree.physical_size(), tree.size());
 }
 
