@@ -391,6 +391,55 @@ TEST(IkdTree, InterleavedInsertDeleteMatchesBruteForce) {
   }
 }
 
+TEST(IkdTree, PartialDeleteAccountingWithoutRebuild) {
+  const auto pts = random_cloud(2000, /*seed=*/91);
+  IkdTree tree;
+  tree.build(pts);
+
+  // Delete a tiny box around a single existing point. One point goes away, the
+  // leaf subtree is below kMinRebuildSize and the garbage fraction is
+  // negligible, so no rebuild fires and the deleted node stays physically
+  // present. That lets us check the invalid_num accounting exactly.
+  const Vec3 target = pts[0];
+  const Vec3 eps(0.01f, 0.01f, 0.01f);
+  tree.remove_box(target - eps, target + eps);
+
+  const size_t deleted =
+      pts.size() - outside_box(pts, target - eps, target + eps).size();
+  ASSERT_EQ(deleted, 1u);
+
+  EXPECT_TRUE(tree.validate());
+  EXPECT_EQ(tree.physical_size(), pts.size());  // nothing reclaimed
+  EXPECT_EQ(tree.size(), pts.size() - 1);       // one live point fewer
+  EXPECT_EQ(tree.physical_size() - tree.size(), deleted);
+}
+
+TEST(IkdTree, DeleteCreatesPushdownAndValidates) {
+  // A handful of points in a spatially separated cluster the tree groups into
+  // one subtree, plus a dense blob near the origin.
+  std::vector<Vec3> pts = random_cloud(500, /*seed=*/5, /*extent=*/10.0f);
+  const Vec3 c(100, 100, 100);
+  std::vector<Vec3> cluster;
+  for (int i = 0; i < 5; ++i)
+    cluster.push_back(c + Vec3(0.1f * i, -0.1f * i, 0.05f * i));
+  pts.insert(pts.end(), cluster.begin(), cluster.end());
+
+  IkdTree tree;
+  tree.build(pts);
+  EXPECT_EQ(tree.physical_size(), pts.size());
+
+  // A box that fully contains the cluster subtree but no origin points. The
+  // subtree root becomes a pending-pushdown node: tree_deleted with stale child
+  // labels underneath. validate() must account for that without descending.
+  tree.remove_box(c - Vec3(1, 1, 1), c + Vec3(1, 1, 1));
+
+  EXPECT_TRUE(tree.validate());
+  EXPECT_EQ(tree.size(), pts.size() - cluster.size());
+  // Cluster is tiny (< kMinRebuildSize) and a small fraction, so no rebuild
+  // reclaimed it; the deleted nodes are still physically present.
+  EXPECT_EQ(tree.physical_size(), pts.size());
+}
+
 TEST(IkdTree, DuplicatePoints) {
   std::vector<Vec3> pts(100, Vec3(2, 2, 2));
   pts.push_back(Vec3(5, 5, 5));

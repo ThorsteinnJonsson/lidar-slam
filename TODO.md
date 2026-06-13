@@ -47,7 +47,7 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
       (`tests/ikd_tree_test.cpp`, 7 tests). Per-node deleted/treedeleted/pushdown/
       invalid_num fields reserved but unused. Note: compiled into `unit_tests` only;
       wires into `lidar_slam` in 4.3 when the estimator consumes it.
-- [ ] 4.2 Incremental ops. API decisions: `size()` reports the **live** count
+- [x] 4.2 Incremental ops. API decisions: `size()` reports the **live** count
       (`treesize − invalid_num`); delete is **box-delete only** (`delete(box)`, the op
       FAST-LIO2 uses to drop far map regions — exact-point delete deferred);
       `insert` takes a **batch** (`std::vector<Vec3>`) with single-point insert
@@ -74,8 +74,11 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
         lowest violating node on unwind (each parent re-checks afterward), not
         strictly the topmost; strict-topmost is a possible refinement. Added
         `physical_size()`/`height()` introspection for tests.
-  - [ ] `validate` update — verify `invalid_num`/`tree_deleted` consistency
-        bottom-up and account for pending `pushdown` without mutating (it's `const`).
+  - [x] `validate` update — `check` recomputes/verifies `invalid_num` and
+        `tree_deleted` bottom-up; at a pending-`pushdown` node it treats the
+        subtree as fully deleted by definition rather than reading stale child
+        labels (pushdown nodes are never nested, so descendants stay
+        self-consistent). Const, non-mutating.
   - [x] Tests (ops) — insert (from-empty, batch-after-build, single) and box-delete
         (vs brute-force live set, delete-all, delete-then-insert) match brute force;
         plus rebuild coverage: SortedInsertStaysBalanced (height < 4·log2 n),

@@ -291,21 +291,29 @@ size_t IkdTree::physical_size() const noexcept {
 
 int IkdTree::height() const noexcept { return node_height(root_.get()); }
 
-bool IkdTree::check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,
+bool IkdTree::check(const Node* n, int& out_size, int& out_invalid,
+                    bool& out_tree_deleted, Eigen::Vector3f& out_lo,
                     Eigen::Vector3f& out_hi) const {
   if (!n) {
     out_size = 0;
+    out_invalid = 0;
+    out_tree_deleted = true;  // an empty subtree is vacuously fully deleted
     return true;
   }
 
   int ls = 0;
   int rs = 0;
+  int li = 0;
+  int ri = 0;
+  bool l_td = true;
+  bool r_td = true;
   Eigen::Vector3f llo, lhi, rlo, rhi;
   bool ok = true;
-  ok = check(n->left.get(), ls, llo, lhi) && ok;
-  ok = check(n->right.get(), rs, rlo, rhi) && ok;
+  ok = check(n->left.get(), ls, li, l_td, llo, lhi) && ok;
+  ok = check(n->right.get(), rs, ri, r_td, rlo, rhi) && ok;
 
-  // Subtree size matches the cached count.
+  // Subtree size matches the cached count. treesize counts physical nodes
+  // (deleted ones included), so lazy deletion does not change it.
   const int sz = 1 + ls + rs;
   if (sz != n->treesize) ok = false;
 
@@ -326,7 +334,27 @@ bool IkdTree::check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,
   }
   if (!(lo == n->range_min) || !(hi == n->range_max)) ok = false;
 
+  // Deletion bookkeeping. A pending pushdown marks the whole subtree deleted
+  // without having relabeled the children yet, so its children's labels are
+  // stale and must not be used: the node is fully deleted by definition.
+  // pushdown nodes are never nested, so the children stay self-consistent and
+  // are still checked by the recursion above.
+  int invalid;
+  bool tree_deleted;
+  if (n->pushdown) {
+    if (!n->deleted) ok = false;
+    invalid = n->treesize;
+    tree_deleted = true;
+  } else {
+    invalid = (n->deleted ? 1 : 0) + li + ri;
+    tree_deleted = n->deleted && l_td && r_td;
+  }
+  if (invalid != n->invalid_num) ok = false;
+  if (tree_deleted != n->tree_deleted) ok = false;
+
   out_size = sz;
+  out_invalid = invalid;
+  out_tree_deleted = tree_deleted;
   out_lo = lo;
   out_hi = hi;
   return ok;
@@ -335,6 +363,8 @@ bool IkdTree::check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,
 bool IkdTree::validate() const {
   if (!root_) return true;
   int size = 0;
+  int invalid = 0;
+  bool tree_deleted = false;
   Eigen::Vector3f lo, hi;
-  return check(root_.get(), size, lo, hi);
+  return check(root_.get(), size, invalid, tree_deleted, lo, hi);
 }

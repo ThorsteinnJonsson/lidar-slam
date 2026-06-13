@@ -8,11 +8,12 @@
 
 // Incremental k-d tree for the SLAM map (after Cai et al. 2021, "ikd-Tree").
 //
-// Phase 4.1 implements the static core: a balanced `build()` and a k-NN search
-// with axis-aligned-bounding-box pruning. Each node caches its subtree's size
-// and bounding box; the incremental insert/delete/rebalance machinery is
-// layered on in 4.2 (the per-node `deleted`/`tree_deleted`/etc. fields are
-// reserved here but unused for now).
+// Supports a balanced `build()`, k-NN search with axis-aligned-bounding-box
+// pruning, incremental `insert`, and lazy box-delete (`remove_box`). Each node
+// caches its subtree's size, bounding box, and deletion bookkeeping
+// (invalid_num / tree_deleted / pushdown); inserts and deletes maintain these
+// on unwind and trigger a partial rebuild when a subtree grows unbalanced or
+// accumulates too many deleted points.
 //
 // Points are stored as float (geometry is all point-to-plane needs, and float
 // halves the node footprint versus double).
@@ -25,9 +26,8 @@ class IkdTree {
   void build(std::vector<Eigen::Vector3f> points);
 
   // Insert points into the existing tree (cheaper than a rebuild when the map
-  // changes by a small fraction each scan). Balance is kept by the partial
-  // rebuild added in a later step; until then a degenerate insert order can
-  // leave the tree unbalanced (k-NN stays correct regardless).
+  // changes by a small fraction each scan). A partial rebuild keeps the tree
+  // balanced as points accumulate.
   void insert(const std::vector<Eigen::Vector3f>& points);
   void insert(const Eigen::Vector3f& point);
 
@@ -56,8 +56,8 @@ class IkdTree {
   int height() const noexcept;
 
   // Verify structural invariants (subtree sizes, bounding boxes, split
-  // ordering). Used by the tests and as a debugging aid for the 4.2 incremental
-  // ops.
+  // ordering) and the lazy-deletion bookkeeping (invalid_num and tree_deleted,
+  // accounting for pending pushdown). Used by the tests and as a debugging aid.
   bool validate() const;
 
  private:
@@ -68,12 +68,12 @@ class IkdTree {
     uint8_t axis = 0;  // split axis (0/1/2)
     Eigen::Vector3f range_min;
     Eigen::Vector3f range_max;
-    int treesize = 1;
-    // --- reserved for incremental ops (4.2); unused in the static tree ---
-    int invalid_num = 0;
-    bool deleted = false;
-    bool tree_deleted = false;
-    bool pushdown = false;
+    int treesize = 1;  // physical node count in this subtree
+    // Lazy-deletion bookkeeping.
+    int invalid_num = 0;        // deleted nodes in this subtree
+    bool deleted = false;       // this node's own point is logically deleted
+    bool tree_deleted = false;  // every point in this subtree is deleted
+    bool pushdown = false;      // a subtree-wide delete is pending propagation
   };
 
   // A k-NN search candidate; the search keeps these in a bounded max-heap.
@@ -116,7 +116,8 @@ class IkdTree {
   void search(const Node* node, const Eigen::Vector3f& query, size_t k,
               std::vector<HeapItem>& heap) const;
 
-  bool check(const Node* n, int& out_size, Eigen::Vector3f& out_lo,
+  bool check(const Node* n, int& out_size, int& out_invalid,
+             bool& out_tree_deleted, Eigen::Vector3f& out_lo,
              Eigen::Vector3f& out_hi) const;
 
   std::unique_ptr<Node> root_;
