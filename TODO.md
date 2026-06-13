@@ -85,9 +85,26 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
         RebuildReclaimsDeletedGarbage (physical size collapses toward live), and a
         20-round InterleavedInsertDeleteMatchesBruteForce. `validate()` holds
         throughout.
-- [ ] 4.3 Point-to-plane association — kNN(5) → plane fit (solve `A·n = −1`,
-      normalize; reject on neighbor-distance / residual thresholds) → correspondences
-      for the iEKF.
+- [x] 4.3 Point-to-plane association (`src/map/association.{h,cpp}`). Float
+      geometry (`Sophus::SE3f`, `Vector3f`), matching the map and FAST-LIO2.
+      Frame-agnostic: takes body-frame points + `T_world_body` and reports the
+      source point back in that frame (the iEKF folds in `T_imu_lidar` and passes
+      IMU-frame points). Output `PlaneMatch{point, normal (world, unit),
+      residual (signed)}`; Jacobian stays in the iEKF.
+  - [x] Per point: transform `p_world = T_world_body · p_body`, `map.knn(.,5)`,
+        distance gate (farthest neighbor dist2 > 5.0 m^2), plane fit
+        (`A·n = −1`, `d = 1/‖n‖`, `n̂ = n/‖n‖`), planarity gate
+        (`|n̂·qᵢ + d|` > 0.1 m), emit `residual = n̂·p_world + d`.
+  - [x] Params struct `PlaneAssocParams{num_neighbors=5, max_neighbor_dist2=5.0,
+        max_plane_dist=0.1}`.
+  - [x] Build: `ikd_tree.cpp` + `association.cpp` added to the `lidar_slam`
+        target (and `unit_tests`).
+  - [x] Tests (5): synthetic tilted plane (normal + analytic residual incl.
+        sign), distance gate, planarity gate (non-coplanar corner), body->world
+        transform with the point reported in body frame, whole noisy planar sheet
+        (loose per-match normal, tight aggregate, no systematic bias).
+      Known limitation: the `A·n = −1` fit degenerates for planes through the
+      origin (rare); the planarity gate rejects such fits.
 
 Deferred refinements (revisit after the iEKF works):
 - [ ] Parallel two-thread rebuild for large subtrees — the paper's `N_max` scheme: a
