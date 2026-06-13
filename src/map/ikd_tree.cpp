@@ -35,23 +35,23 @@ void IkdTree::pull_up(Node* n) {
   n->range_min = n->point;
   n->range_max = n->point;
   // A null child contributes 0 invalid points and is vacuously "fully deleted"
-  // for the treedeleted conjunction.
+  // for the tree_deleted conjunction.
   int invalid = n->deleted ? 1 : 0;
-  bool tree_deleted = n->deleted;
+  bool all_deleted = n->deleted;
   if (n->left) {
     n->range_min = n->range_min.cwiseMin(n->left->range_min);
     n->range_max = n->range_max.cwiseMax(n->left->range_max);
     invalid += n->left->invalid_num;
-    tree_deleted = tree_deleted && n->left->treedeleted;
+    all_deleted = all_deleted && n->left->tree_deleted;
   }
   if (n->right) {
     n->range_min = n->range_min.cwiseMin(n->right->range_min);
     n->range_max = n->range_max.cwiseMax(n->right->range_max);
     invalid += n->right->invalid_num;
-    tree_deleted = tree_deleted && n->right->treedeleted;
+    all_deleted = all_deleted && n->right->tree_deleted;
   }
   n->invalid_num = invalid;
-  n->treedeleted = tree_deleted;
+  n->tree_deleted = all_deleted;
 }
 
 // Lazily propagate a pending subtree-wide deletion to a node's children. In 4.2
@@ -63,7 +63,7 @@ void IkdTree::push_down(Node* n) {
   for (Node* child : {n->left.get(), n->right.get()}) {
     if (!child) continue;
     child->deleted = true;
-    child->treedeleted = true;
+    child->tree_deleted = true;
     child->invalid_num = child->treesize;
     child->pushdown = true;
   }

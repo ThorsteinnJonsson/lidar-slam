@@ -11,7 +11,7 @@
 // Phase 4.1 implements the static core: a balanced `build()` and a k-NN search
 // with axis-aligned-bounding-box pruning. Each node caches its subtree's size
 // and bounding box; the incremental insert/delete/rebalance machinery is
-// layered on in 4.2 (the per-node `deleted`/`treedeleted`/etc. fields are
+// layered on in 4.2 (the per-node `deleted`/`tree_deleted`/etc. fields are
 // reserved here but unused for now).
 //
 // Points are stored as float (geometry is all point-to-plane needs, and float
@@ -58,7 +58,7 @@ class IkdTree {
     // --- reserved for incremental ops (4.2); unused in the static tree ---
     int invalid_num = 0;
     bool deleted = false;
-    bool treedeleted = false;
+    bool tree_deleted = false;
     bool pushdown = false;
   };
 
