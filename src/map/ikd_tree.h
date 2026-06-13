@@ -63,6 +63,7 @@ class IkdTree {
   static bool heap_less(const HeapItem& a, const HeapItem& b);
   static int node_size(const Node* n);
   static void pull_up(Node* n);
+  static void push_down(Node* n);
 
   static std::unique_ptr<Node> build_range(Eigen::Vector3f* first,
                                            Eigen::Vector3f* last);

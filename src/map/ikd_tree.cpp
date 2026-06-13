@@ -27,19 +27,47 @@ bool IkdTree::heap_less(const HeapItem& a, const HeapItem& b) {
 
 int IkdTree::node_size(const Node* n) { return n ? n->treesize : 0; }
 
-// Recompute a node's cached attributes from its children (bottom-up).
+// Recompute a node's cached attributes from its children (bottom-up). The
+// bounding box spans all physical points, deleted ones included, they stay in
+// the tree until a rebuild, and a conservative box keeps k-NN pruning correct.
 void IkdTree::pull_up(Node* n) {
   n->treesize = 1 + node_size(n->left.get()) + node_size(n->right.get());
   n->range_min = n->point;
   n->range_max = n->point;
+  // A null child contributes 0 invalid points and is vacuously "fully deleted"
+  // for the treedeleted conjunction.
+  int invalid = n->deleted ? 1 : 0;
+  bool tree_deleted = n->deleted;
   if (n->left) {
     n->range_min = n->range_min.cwiseMin(n->left->range_min);
     n->range_max = n->range_max.cwiseMax(n->left->range_max);
+    invalid += n->left->invalid_num;
+    tree_deleted = tree_deleted && n->left->treedeleted;
   }
   if (n->right) {
     n->range_min = n->range_min.cwiseMin(n->right->range_min);
     n->range_max = n->range_max.cwiseMax(n->right->range_max);
+    invalid += n->right->invalid_num;
+    tree_deleted = tree_deleted && n->right->treedeleted;
   }
+  n->invalid_num = invalid;
+  n->treedeleted = tree_deleted;
+}
+
+// Lazily propagate a pending subtree-wide deletion to a node's children. In 4.2
+// the only lazily-set attribute is "whole subtree deleted" (from box delete),
+// so a pending pushdown always means "mark both children fully deleted". Call
+// this before descending into a node's children in any mutating op.
+void IkdTree::push_down(Node* n) {
+  if (!n->pushdown) return;
+  for (Node* child : {n->left.get(), n->right.get()}) {
+    if (!child) continue;
+    child->deleted = true;
+    child->treedeleted = true;
+    child->invalid_num = child->treesize;
+    child->pushdown = true;
+  }
+  n->pushdown = false;
 }
 
 std::unique_ptr<IkdTree::Node> IkdTree::build_range(Eigen::Vector3f* first,
