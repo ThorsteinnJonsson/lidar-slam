@@ -80,7 +80,7 @@ std::unique_ptr<IkdTree::Node> IkdTree::build_range(Eigen::Vector3f* first,
                                                     Eigen::Vector3f* last) {
   if (first >= last) return nullptr;
 
-  // Split on the axis of maximum spread — balances better than depth-cycling on
+  // Split on the axis of maximum spread. Balances better than depth-cycling on
   // the anisotropic point distributions LiDAR produces (long, flat surfaces).
   Eigen::Vector3f lo = *first;
   Eigen::Vector3f hi = *first;
@@ -116,7 +116,7 @@ void IkdTree::build(std::vector<Eigen::Vector3f> points) {
 void IkdTree::insert_at(std::unique_ptr<Node>& slot,
                         const Eigen::Vector3f& point) {
   if (!slot) {
-    // Reached an empty slot — attach the point as a fresh leaf. A leaf's axis
+    // Reached an empty slot. Attach the point as a fresh leaf. A leaf's axis
     // is unused until it gains children; leave it at 0 and let a later rebuild
     // assign a proper max-spread axis.
     slot = std::make_unique<Node>();

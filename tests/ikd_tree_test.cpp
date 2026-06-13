@@ -67,7 +67,7 @@ bool in_box(const Vec3& p, const Vec3& lo, const Vec3& hi) {
   return (p.array() >= lo.array()).all() && (p.array() <= hi.array()).all();
 }
 
-// The points of `pts` that fall outside the closed box [lo, hi] — the live set
+// The points of `pts` that fall outside the closed box [lo, hi], the live set
 // expected after a box delete.
 std::vector<Vec3> outside_box(const std::vector<Vec3>& pts, const Vec3& lo,
                               const Vec3& hi) {
@@ -292,7 +292,7 @@ TEST(IkdTree, RemoveBoxThenInsert) {
   tree.build(base);
   tree.remove_box(lo, hi);
 
-  // Insert fresh points — some land back inside the deleted region and must
+  // Insert fresh points. Some land back inside the deleted region and must
   // come alive again (insert revives, it doesn't inherit the deleted label).
   const auto added = random_cloud(300, /*seed=*/14, /*extent=*/15.0f);
   tree.insert(added);
