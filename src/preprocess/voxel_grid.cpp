@@ -23,7 +23,7 @@ PointCloud voxel_downsample(const PointCloud& cloud, double leaf_size) {
 
   // Map a point to a single integer voxel key by bit-packing its grid indices.
   // 21 bits per axis, biased to non-negative: range ±2^20 voxels, i.e. ±524 km
-  // at a 0.5 m leaf — far beyond the extent of any single scan.
+  // at a 0.5 m leaf, far beyond the extent of any single scan.
   const auto voxel_key = [leaf_size](float x, float y, float z) -> int64_t {
     // floor (not truncation) so negative coordinates bucket correctly.
     const int64_t ix = static_cast<int64_t>(std::floor(x / leaf_size));

@@ -35,7 +35,7 @@ std::vector<ImuMeasurement> ImuBuffer::get_between(uint64_t t0_ns,
   // Prepend interpolated sample at exactly t0_ns (if the first sample is after
   // t0).
   if (after_t0 == data_.begin() || after_t0->stamp.to_nsec() == t0_ns) {
-    // Exact match at the boundary — no interpolation needed.
+    // Exact match at the boundary, no interpolation needed.
     result.push_back(*after_t0);
   } else {
     auto prev = std::prev(after_t0);

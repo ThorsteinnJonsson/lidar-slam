@@ -36,7 +36,7 @@ std::vector<StampedPose> build_scan_trajectory(const ImuBuffer& imu,
   std::vector<StampedPose> traj;
   traj.reserve(meas.size());
 
-  // Integrate gyro from identity. Position stays zero (rotation-only) — see the
+  // Integrate gyro from identity. Position stays zero (rotation-only); see the
   // TODO(velocity) note in the header.
   const Eigen::Vector3d zero_p = Eigen::Vector3d::Zero();
   Sophus::SO3d R;  // identity

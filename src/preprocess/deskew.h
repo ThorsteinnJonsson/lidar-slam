@@ -18,7 +18,7 @@ struct StampedPose {
 // relative to the scan start (first pose = identity); only intra-scan relative
 // motion matters for deskewing, so the absolute world frame is irrelevant here.
 //
-// TODO(velocity): this is rotation-only for now — translation is left at zero
+// TODO(velocity): this is rotation-only for now; translation is left at zero
 // because we have no velocity estimate yet. Once the iEKF provides a full state
 // (Phase 5/6), integrate position via ImuPropagator and feed the bias in too.
 std::vector<StampedPose> build_scan_trajectory(const ImuBuffer& imu,

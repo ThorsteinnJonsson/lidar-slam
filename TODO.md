@@ -40,15 +40,51 @@ Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR +
 Incremental k-d tree (ikd-Tree, Cai et al. 2021) as the map backend, built up in
 testable milestones. Test harness added with 4.1 — first tests in the project.
 
-- [ ] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
+- [x] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
       subtree AABB + treesize attributes, recursive `knn()` with AABB pruning and a
-      bounded max-heap (`src/map/ikd_tree.h/cpp`). Gate: k-NN matches brute-force
-      and nanoflann oracles on random clouds; structural invariants hold.
-- [ ] 4.2 Incremental ops — `insert()`, lazy point/box delete (deleted/treedeleted/
-      pushdown labels), pull-up/push-down attribute maintenance, single-threaded
-      partial rebuild on balance (`max(size_L, size_R) > α_bal·(size−1)`) or garbage
-      (`invalid_num > α_del·size`) criteria. Gate: random insert/delete sequences
-      match brute force; invariants hold.
+      bounded max-heap (`src/map/ikd_tree.h/cpp`). `validate()` checks structural
+      invariants. Tested against brute-force and nanoflann oracles + edge cases
+      (`tests/ikd_tree_test.cpp`, 7 tests). Per-node deleted/treedeleted/pushdown/
+      invalid_num fields reserved but unused. Note: compiled into `unit_tests` only;
+      wires into `lidar_slam` in 4.3 when the estimator consumes it.
+- [x] 4.2 Incremental ops. API decisions: `size()` reports the **live** count
+      (`treesize − invalid_num`); delete is **box-delete only** (`delete(box)`, the op
+      FAST-LIO2 uses to drop far map regions — exact-point delete deferred);
+      `insert` takes a **batch** (`std::vector<Vec3>`) with single-point insert
+      internally. Refactor recursion to operate on `unique_ptr<Node>&` slots so a
+      rebuild can swap a subtree in place. Sub-steps:
+  - [x] Attribute plumbing — `pull_up` maintains `invalid_num`
+        (`deleted + L.invalid_num + R.invalid_num`) and `tree_deleted`
+        (`deleted && L.tree_deleted && R.tree_deleted`); `push_down` lazily
+        propagates a pending subtree-wide deletion into children before descending.
+  - [x] `insert` (batch + single) — recursive descend-by-axis on `unique_ptr&`
+        slots, attach leaf, `pull_up` on unwind. (Rebalance hook deferred to the
+        partial-rebuild step.) `size()` now reports the live count.
+  - [x] `remove_box` — AABB-vs-box: fully-inside → mark `tree_deleted`/`pushdown`
+        (`invalid_num = treesize`); no-overlap → skip; partial → `push_down`, test
+        own point, recurse, `pull_up`. (Rebalance hook deferred.)
+  - [x] `knn` update — skips `deleted` points and `tree_deleted` subtrees; AABB
+        pruning stays valid (box still bounds physical points, conservative).
+  - [x] Partial rebuild (single-threaded) — on unwind test balance
+        (`max(size_L, size_R) > α_bal·(treesize−1)`) and garbage (`invalid_num >
+        α_del·treesize`); rebuild via `flatten` (live points only, skipping
+        `tree_deleted`) + `build_range`, swapped into the `unique_ptr` slot.
+        Constants α_bal=0.7, α_del=0.5, plus kMinRebuildSize=10 to skip churn on
+        tiny subtrees. Hook wired into `insert_at`/`remove_box_at`. Rebuilds the
+        lowest violating node on unwind (each parent re-checks afterward), not
+        strictly the topmost; strict-topmost is a possible refinement. Added
+        `physical_size()`/`height()` introspection for tests.
+  - [x] `validate` update — `check` recomputes/verifies `invalid_num` and
+        `tree_deleted` bottom-up; at a pending-`pushdown` node it treats the
+        subtree as fully deleted by definition rather than reading stale child
+        labels (pushdown nodes are never nested, so descendants stay
+        self-consistent). Const, non-mutating.
+  - [x] Tests (ops) — insert (from-empty, batch-after-build, single) and box-delete
+        (vs brute-force live set, delete-all, delete-then-insert) match brute force;
+        plus rebuild coverage: SortedInsertStaysBalanced (height < 4·log2 n),
+        RebuildReclaimsDeletedGarbage (physical size collapses toward live), and a
+        20-round InterleavedInsertDeleteMatchesBruteForce. `validate()` holds
+        throughout.
 - [ ] 4.3 Point-to-plane association — kNN(5) → plane fit (solve `A·n = −1`,
       normalize; reject on neighbor-distance / residual thresholds) → correspondences
       for the iEKF.

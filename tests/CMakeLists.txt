@@ -1,6 +1,8 @@
-# Unit tests (GoogleTest). Add new *_test.cpp files to the sources below.
+# Unit tests (GoogleTest). Add new *_test.cpp files (and any src/ units under
+# test) to the sources below.
 add_executable(unit_tests
-    placeholder_test.cpp
+    ikd_tree_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
 )
 
 target_include_directories(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
