@@ -144,9 +144,14 @@ accurate), not a fixed iter-0 plane set.
       header-only inline). Tests (6): zero-increment identity, boxminus-of-self,
       both round-trip directions, right-perturbation rotation, linear blocks
       (`tests/state_test.cpp`).
-- [ ] 5.2 Measurement build — assemble `H` (m×18) and residual `z` (m) from
-      `(State, vector<PlaneMatch>)` (`src/estimator/measurement.{h,cpp}`). Test:
-      finite-difference each δx block against analytic H.
+- [x] 5.2 Measurement build — `build_measurement(State, vector<PlaneMatch>)`
+      returns `LinearizedMeasurement{H (m×18), z (m)}`
+      (`src/estimator/measurement.{h,cpp}`). `H` rows: δθ block `-nᵀR[p_I]ₓ`,
+      δp block `nᵀ`, rest zero; `z` echoes the (current-state) match residuals.
+      Contract: matches must come from `associate_planes` at the same state.
+      Tests (4): central finite-difference vs analytic H over all 18 columns,
+      unobserved blocks zero, residual echo, empty system
+      (`tests/measurement_test.cpp`).
 - [ ] 5.3 Single iterated update — information-form gain
       `K = (HᵀR⁻¹H + P⁻¹)⁻¹ HᵀR⁻¹` (18×18 inversion, not m×m), correction
       `δx = -Kz - (I-KH)(xʲ⊟x̂)` with the ⊟-Jacobian `J ≈ I` as a first cut,

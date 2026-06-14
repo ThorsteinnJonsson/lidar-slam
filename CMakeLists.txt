@@ -28,6 +28,7 @@ add_executable(lidar_slam
     src/preprocess/voxel_grid.cpp
     src/map/ikd_tree.cpp
     src/map/association.cpp
+    src/estimator/measurement.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
