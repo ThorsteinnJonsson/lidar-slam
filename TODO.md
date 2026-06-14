@@ -138,8 +138,12 @@ IMU frame) and `T_world_body = T_WI` to `associate_planes`; the returned
 Decision: **re-associate every iteration** with the current pose (FAST-LIO2
 accurate), not a fixed iter-0 plane set.
 
-- [ ] 5.1 `⊞`/`⊟` on `State` — `boxplus(State, δx)`, `boxminus(State, State)`,
-      `Vector18` alias (`src/imu/state.h`). Round-trip and SO3-block tests.
+- [x] 5.1 `⊞`/`⊟` on `State` — `boxplus(State, δx)` (right perturbation
+      `R·Exp(δθ)`, rest additive), `boxminus(State, State)`
+      (`log(b.R⁻¹·a.R)` + subtraction), `Vector18` alias (`src/imu/state.h`,
+      header-only inline). Tests (6): zero-increment identity, boxminus-of-self,
+      both round-trip directions, right-perturbation rotation, linear blocks
+      (`tests/state_test.cpp`).
 - [ ] 5.2 Measurement build — assemble `H` (m×18) and residual `z` (m) from
       `(State, vector<PlaneMatch>)` (`src/estimator/measurement.{h,cpp}`). Test:
       finite-difference each δx block against analytic H.

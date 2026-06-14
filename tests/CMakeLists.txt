@@ -3,6 +3,7 @@
 add_executable(unit_tests
     ikd_tree_test.cpp
     association_test.cpp
+    state_test.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
 )
