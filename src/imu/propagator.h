@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "imu/state.h"
+#include "math/skew.h"
 #include "types.h"
 
 struct NoiseParams {
@@ -31,6 +32,4 @@ class ImuPropagator {
 
  private:
   NoiseParams noise_;
-
-  static Eigen::Matrix3d skew(const Eigen::Vector3d& v);
 };

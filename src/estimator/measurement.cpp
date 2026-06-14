@@ -1,18 +1,6 @@
 #include "estimator/measurement.h"
 
-namespace {
-
-Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
-  Eigen::Matrix3d s;
-  // clang-format off
-  s <<     0, -v.z(),  v.y(),
-       v.z(),      0, -v.x(),
-      -v.y(),  v.x(),      0;
-  // clang-format on
-  return s;
-}
-
-}  // namespace
+#include "math/skew.h"
 
 LinearizedMeasurement build_measurement(
     const State& s, const std::vector<PlaneMatch>& matches) {
