@@ -120,11 +120,48 @@ Deferred refinements (revisit after the iEKF works):
 
 ## Phase 5: State Estimation (iEKF)
 
-- [ ] Error-state representation (position, velocity, rotation, IMU biases, gravity)
-- [ ] Measurement model — point-to-plane residuals and Jacobians
-- [ ] Iterated EKF update loop
-- [ ] Outlier rejection (chi-squared test on residuals)
-- [ ] Online LiDAR↔IMU extrinsic estimation (stretch) — add `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²) as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant dynamics, driven by the point-to-plane Jacobian. Currently `T_imu_lidar` is fixed from YAML (`imu_from_lidar()`). Watch observability — translation needs sufficient motion excitation, can drift/hurt accuracy otherwise.
+Iterated error-state EKF (FAST-LIO2 / IKFoM style) over the existing 18-DOF state
+`[R, p, v, b_g, b_a, gravity]`, error `δx = [δθ, δp, δv, δb_g, δb_a, δg]` (right
+perturbation `R = R̄·Exp(δθ)`). Predict is already done
+(`ImuPropagator::propagate_with_covariance`); this phase is the measurement
+update. New module under `src/estimator/`. Filter runs in `double`; float
+`PlaneMatch` values are cast at H-build time.
+
+Measurement model (per correspondence): `p_W = R·p_I + p` with
+`p_I = T_imu_lidar · p_L` fixed; residual `h = n̂ᵀ(R·p_I + p) + d`. Linearized
+row of H (1×18): `δθ` block `-n̂ᵀ R [p_I]ₓ`, `δp` block `n̂ᵀ`, rest zero
+(v / biases / gravity corrected only through P cross-terms in a single frame).
+
+The iEKF passes lidar points pre-multiplied by `T_imu_lidar` (so they are in the
+IMU frame) and `T_world_body = T_WI` to `associate_planes`; the returned
+`PlaneMatch.point` is then exactly `p_I` and `residual` is `n̂ᵀp_W + d`.
+Decision: **re-associate every iteration** with the current pose (FAST-LIO2
+accurate), not a fixed iter-0 plane set.
+
+- [ ] 5.1 `⊞`/`⊟` on `State` — `boxplus(State, δx)`, `boxminus(State, State)`,
+      `Vector18` alias (`src/imu/state.h`). Round-trip and SO3-block tests.
+- [ ] 5.2 Measurement build — assemble `H` (m×18) and residual `z` (m) from
+      `(State, vector<PlaneMatch>)` (`src/estimator/measurement.{h,cpp}`). Test:
+      finite-difference each δx block against analytic H.
+- [ ] 5.3 Single iterated update — information-form gain
+      `K = (HᵀR⁻¹H + P⁻¹)⁻¹ HᵀR⁻¹` (18×18 inversion, not m×m), correction
+      `δx = -Kz - (I-KH)(xʲ⊟x̂)` with the ⊟-Jacobian `J ≈ I` as a first cut,
+      `xʲ⁺¹ = xʲ ⊞ δx`, converge on `‖δx‖`, then `P⁺ = (I-KH)P`
+      (`src/estimator/iekf.{h,cpp}`). Tests: single update pulls pose toward
+      truth on a synthetic plane scene; `P⁺` stays symmetric PSD and shrinks.
+- [ ] 5.4 Outlier rejection — chi-squared / residual gate folded into the H/z
+      build (`z_i²/σ²` over threshold dropped). Measurement noise `R = σ²I`,
+      `σ` configurable.
+- [ ] 5.5 Pipeline glue — `IteratedEkf::process_scan(...)`: predict over the
+      scan window from the IMU buffer, iterate (re-associate → build → update),
+      then insert registered world-frame points into the ikd-tree map. Test:
+      synthetic IMU + planar scene, bounded trajectory error over N scans.
+- [ ] 5.6 Online LiDAR↔IMU extrinsic estimation (stretch, deferred) — add
+      `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²)
+      as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant
+      dynamics, driven by the point-to-plane Jacobian. Currently `T_imu_lidar` is
+      fixed from YAML (`imu_from_lidar()`). Watch observability: translation
+      needs motion excitation, can drift/hurt accuracy otherwise.
 
 ---
 
