@@ -152,12 +152,19 @@ accurate), not a fixed iter-0 plane set.
       Tests (4): central finite-difference vs analytic H over all 18 columns,
       unobserved blocks zero, residual echo, empty system
       (`tests/measurement_test.cpp`).
-- [ ] 5.3 Single iterated update — information-form gain
-      `K = (HᵀR⁻¹H + P⁻¹)⁻¹ HᵀR⁻¹` (18×18 inversion, not m×m), correction
-      `δx = -Kz - (I-KH)(xʲ⊟x̂)` with the ⊟-Jacobian `J ≈ I` as a first cut,
-      `xʲ⁺¹ = xʲ ⊞ δx`, converge on `‖δx‖`, then `P⁺ = (I-KH)P`
-      (`src/estimator/iekf.{h,cpp}`). Tests: single update pulls pose toward
-      truth on a synthetic plane scene; `P⁺` stays symmetric PSD and shrinks.
+- [x] 5.3 Iterated update — `iterated_update(x̂, P, measure, cfg)` in
+      `src/estimator/iekf.{h,cpp}`, where `measure` is a
+      `std::function<LinearizedMeasurement(State)>` (callback so the loop is
+      testable without the map; 5.5 supplies associate+build, tests supply
+      synthetic planes). Info-form gain `K = (HᵀR⁻¹H + P⁻¹)⁻¹HᵀR⁻¹` via `ldlt`
+      on the 18×18 (never m×m), correction `δx = -Kz - (I-KH)·boxminus(xʲ, x̂)`
+      (boxminus-Jacobian `J ≈ I`), `xʲ⁺¹ = boxplus(xʲ, δx)`, converge on `‖δx‖`,
+      then `P⁺ = (I-KH)P` resymmetrized. `IekfConfig{sigma=0.01, max_iterations=5,
+      convergence_tol=1e-3}`; `EkfResult{state, covariance, iterations, converged}`.
+      Empty correspondences return the prior unchanged. Tests (4): pulls pose to
+      truth, iteration beats a single step on a large error, `P⁺`
+      symmetric/PSD/shrinks (incl. pose block), empty-system no-op
+      (`tests/iekf_test.cpp`).
 - [ ] 5.4 Outlier rejection — chi-squared / residual gate folded into the H/z
       build (`z_i²/σ²` over threshold dropped). Measurement noise `R = σ²I`,
       `σ` configurable.

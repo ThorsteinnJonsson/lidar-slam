@@ -29,6 +29,7 @@ add_executable(lidar_slam
     src/map/ikd_tree.cpp
     src/map/association.cpp
     src/estimator/measurement.cpp
+    src/estimator/iekf.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
