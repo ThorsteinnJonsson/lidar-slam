@@ -165,9 +165,19 @@ accurate), not a fixed iter-0 plane set.
       truth, iteration beats a single step on a large error, `P⁺`
       symmetric/PSD/shrinks (incl. pose block), empty-system no-op
       (`tests/iekf_test.cpp`).
-- [ ] 5.4 Outlier rejection — chi-squared / residual gate folded into the H/z
-      build (`z_i²/σ²` over threshold dropped). Measurement noise `R = σ²I`,
-      `σ` configurable.
+- [x] 5.4 Outlier rejection — Mahalanobis chi-squared gate
+      `gate_measurement(m, P, σ, chi2)` (`src/estimator/outlier.{h,cpp}`): drops
+      rows where `zᵢ²/(HᵢPHᵢᵀ + σ²) > chi2_thresh`. Normalizing by the full
+      innovation variance (not σ² alone) loosens the gate under prior
+      uncertainty and tightens it as the estimate firms up. Called from
+      `iterated_update` each iteration, guarded by `IekfConfig{reject_outliers=
+      true, outlier_chi2=3.841}` (χ²₁ 95%). Tests: unit (keeps inliers, drops
+      gross outliers, threshold monotonicity, larger-prior-keeps-borderline,
+      empty) in `tests/outlier_test.cpp`; integration (gate recovers truth from
+      8 gross outliers that drag the ungated solve off) in `tests/iekf_test.cpp`.
+      Note: this is a principled upgrade over FAST-LIO2, which uses a
+      range-scaled distance heuristic (`s = 1 - 0.9·|d|/√range`) rather than a
+      statistical test.
 - [ ] 5.5 Pipeline glue — `IteratedEkf::process_scan(...)`: predict over the
       scan window from the IMU buffer, iterate (re-associate → build → update),
       then insert registered world-frame points into the ikd-tree map. Test:

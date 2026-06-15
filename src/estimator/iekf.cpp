@@ -2,6 +2,8 @@
 
 #include <Eigen/Dense>
 
+#include "estimator/outlier.h"
+
 EkfResult iterated_update(const State& x_hat,
                           const Eigen::Matrix<double, 18, 18>& P,
                           const MeasurementFn& measure, const IekfConfig& cfg) {
@@ -19,7 +21,9 @@ EkfResult iterated_update(const State& x_hat,
   bool have_gain = false;
 
   while (iters < cfg.max_iterations) {
-    const LinearizedMeasurement lm = measure(x);
+    LinearizedMeasurement lm = measure(x);
+    if (cfg.reject_outliers && lm.H.rows() > 0)
+      lm = gate_measurement(lm, P, cfg.sigma, cfg.outlier_chi2);
     if (lm.H.rows() == 0) break;  // nothing observes the state this iteration
     H = lm.H;
 

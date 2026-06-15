@@ -6,10 +6,12 @@ add_executable(unit_tests
     state_test.cpp
     measurement_test.cpp
     iekf_test.cpp
+    outlier_test.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/measurement.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/iekf.cpp
+    ${CMAKE_SOURCE_DIR}/src/estimator/outlier.cpp
 )
 
 target_include_directories(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

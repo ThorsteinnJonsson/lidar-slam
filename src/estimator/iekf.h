@@ -11,6 +11,9 @@ struct IekfConfig {
   double sigma = 0.01;     // point-to-plane measurement std (m), R = sigma^2 I
   int max_iterations = 5;  // cap on the iterate loop
   double convergence_tol = 1e-3;  // stop when ||delta_x|| drops below this
+
+  bool reject_outliers = true;  // gate correspondences by Mahalanobis distance
+  double outlier_chi2 = 3.841;  // chi-squared(1) threshold (95th percentile)
 };
 
 // Result of an update: corrected state, covariance, and loop diagnostics.

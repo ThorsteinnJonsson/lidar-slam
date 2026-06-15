@@ -71,6 +71,20 @@ MeasurementFn scene_measure(const Scene& sc) {
   };
 }
 
+// Append gross-outlier correspondences: real geometry (point + normal) but a
+// plane offset that puts the point a fixed distance off, regardless of pose.
+void add_outliers(Scene& sc, const State& x_true, int count, double offset) {
+  for (int i = 0; i < count; ++i) {
+    const Vec3 p(1.0 + i, -2.0 + 0.5 * i, 0.5 * i);
+    const Vec3 n = Vec3(0.3 + 0.1 * i, 1.0, -0.4).normalized();
+    const Vec3 p_W = x_true.R * p + x_true.p;
+    sc.p_I.push_back(p);
+    sc.n.push_back(n);
+    sc.d.push_back(-n.dot(p_W) +
+                   offset);  // residual ~ offset at any nearby pose
+  }
+}
+
 double pose_error(const State& a, const State& b) {
   return boxminus(a, b).head<6>().norm();  // rotation + position only
 }
@@ -146,6 +160,31 @@ TEST(Iekf, CovarianceShrinksAndStaysValid) {
   const double pose_trace_after = Pp.topLeftCorner<6, 6>().trace();
   const double pose_trace_before = P.topLeftCorner<6, 6>().trace();
   EXPECT_LT(pose_trace_after, pose_trace_before);
+}
+
+TEST(Iekf, OutlierGateRecoversFromBadCorrespondences) {
+  const State x_true = true_state();
+  Scene sc = make_scene(x_true);
+  add_outliers(sc, x_true, /*count=*/8, /*offset=*/10.0);
+
+  Vector18 err = Vector18::Zero();
+  err.segment<3>(0) = Vec3(0.02, -0.01, 0.015);
+  err.segment<3>(3) = Vec3(0.03, -0.02, 0.01);
+  const State x_hat = boxplus(x_true, err);
+  const Matrix18 P = Matrix18::Identity() * 0.25;
+
+  IekfConfig ungated;
+  ungated.reject_outliers = false;
+  const auto without = iterated_update(x_hat, P, scene_measure(sc), ungated);
+
+  IekfConfig gated;  // reject_outliers defaults to true
+  const auto with = iterated_update(x_hat, P, scene_measure(sc), gated);
+
+  // The outliers drag the ungated solution off truth; the gate recovers it.
+  EXPECT_GT(pose_error(without.state, x_true), 0.05);
+  EXPECT_LT(pose_error(with.state, x_true), 1e-3);
+  EXPECT_LT(pose_error(with.state, x_true), pose_error(without.state, x_true));
+  EXPECT_TRUE(with.converged);
 }
 
 TEST(Iekf, NoCorrespondencesLeavePriorUnchanged) {

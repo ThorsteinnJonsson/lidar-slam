@@ -30,6 +30,7 @@ add_executable(lidar_slam
     src/map/association.cpp
     src/estimator/measurement.cpp
     src/estimator/iekf.cpp
+    src/estimator/outlier.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
