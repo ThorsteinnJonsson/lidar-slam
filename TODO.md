@@ -206,13 +206,43 @@ accurate), not a fixed iter-0 plane set.
 
 ## Phase 6: Pipeline
 
-- [ ] Main SLAM loop tying all phases together
-- [ ] Initialization (static IMU init for gravity/bias estimation)
+Next up, in order: (1) proper initialization, (2) map cropping, (3) ground-truth
+comparison (Phase 7).
+
+- [x] Main SLAM loop tying all phases together — `main.cpp` streams the bag,
+      buffers IMU, and syncs clouds with a pending queue (a cloud is processed
+      only once the IMU buffer covers its `[last_ref, t_end]` window, since the
+      IMU around scan-end arrives after the cloud message). Per scan:
+      `build_scan_trajectory` → `deskew` → `voxel_downsample(0.5)` →
+      `IteratedEkf::process_scan` → append pose to `trajectory.tum`. Verified on
+      `eee_03`: ~1814 scans, smooth indoor trajectory, no divergence.
+- [ ] Proper initialization — replace the `static_init` shortcut in `main.cpp`
+      (currently `gravity = -mean(accel)`, `b_g = mean(gyro)`, `R = I`, which
+      folds any accel bias into gravity, so `|g|` came out 9.64 not 9.81).
+      Needed:
+  - [ ] Stationarity check over the init window (accel/gyro variance gate)
+        before trusting the average, instead of blindly using the first 200
+        samples.
+  - [ ] Separate gravity from accel bias: pin `|g|` to the known local value and
+        attribute the residual specific force to `b_a`.
+  - [ ] Align initial orientation to gravity: set `R` so measured gravity points
+        along world-down (fixes roll/pitch; yaw stays free/unobservable).
+  - [ ] Seed `P` to match the init confidence instead of a flat `0.01·I`.
+- [ ] Map cropping (sliding-window map) — bound the ikd-tree as the sensor
+      moves, using the existing `remove_box`: keep a local cube around the
+      current position and box-delete everything outside it (FAST-LIO2 "map
+      sliding"). Currently the map grows unbounded (~2.4M points by scan 500 on
+      `eee_03`); this caps memory and keeps k-NN fast on long sequences. Pairs
+      with the deferred voxel-downsample-on-insert for fixed map resolution.
 
 ---
 
 ## Phase 7: Evaluation
 
-- [ ] Pose trajectory output (TUM format)
-- [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics)
+- [x] Pose trajectory output (TUM format) — `main.cpp` writes `trajectory.tum`
+      (`t tx ty tz qx qy qz qw`), one line per processed scan.
+- [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics) — the dataset
+      ground truth is the Leica prism (`leica_prism.yaml` / the bag's pose
+      topic), which is position-only and in its own frame, so align (umeyama /
+      `evo`-style) before computing ATE/RTE. Compare `trajectory.tum` against it.
 - [ ] Optional: ROS2 publisher for RViz visualization
