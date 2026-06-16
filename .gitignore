@@ -70,3 +70,6 @@ Testing/
 
 # Datasets
 datasets/
+
+# Trajectory output
+*.tum
