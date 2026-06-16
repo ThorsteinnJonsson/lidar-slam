@@ -178,10 +178,23 @@ accurate), not a fixed iter-0 plane set.
       Note: this is a principled upgrade over FAST-LIO2, which uses a
       range-scaled distance heuristic (`s = 1 - 0.9·|d|/√range`) rather than a
       statistical test.
-- [ ] 5.5 Pipeline glue — `IteratedEkf::process_scan(...)`: predict over the
-      scan window from the IMU buffer, iterate (re-associate → build → update),
-      then insert registered world-frame points into the ikd-tree map. Test:
-      synthetic IMU + planar scene, bounded trajectory error over N scans.
+- [x] 5.5 Pipeline glue — `IteratedEkf` (`src/estimator/iterated_ekf.{h,cpp}`)
+      owns the running estimate `(x, P)` and the ikd-tree map.
+      `process_scan(imu, points_lidar)`: predict over the IMU window
+      (consecutive `propagate_with_covariance` steps), then run
+      `iterated_update` with the real `MeasurementFn` (lidar points are folded
+      into the IMU frame once via `T_imu_lidar`, then re-associated against the
+      live iterate each iteration: `associate_planes` → `build_measurement`),
+      then insert the registered world-frame points into the map (`build` when
+      empty, else `insert`). First scan: empty map, update no-ops, the scan
+      seats the map. Decisions: pre-deskewed lidar points + an IMU-measurement
+      vector as the contract (deskew/voxel orchestration stays in the caller);
+      class kept separate from the pure `iterated_update` math. Deferred (as in
+      Phase 4): map region cropping via `remove_box`, voxel-downsample-on-insert,
+      static IMU initialization (Phase 6). Tests (3, `tests/iterated_ekf_test.cpp`):
+      seats map on first scan, static sensor holds pose over 20 scans,
+      constant-velocity with a wrong velocity seed tracks truth with bounded
+      error (synthetic box room of planes spanning all axes + consistent IMU).
 - [ ] 5.6 Online LiDAR↔IMU extrinsic estimation (stretch, deferred) — add
       `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²)
       as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant
