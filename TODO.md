@@ -245,4 +245,12 @@ comparison (Phase 7).
       ground truth is the Leica prism (`leica_prism.yaml` / the bag's pose
       topic), which is position-only and in its own frame, so align (umeyama /
       `evo`-style) before computing ATE/RTE. Compare `trajectory.tum` against it.
+  - [ ] Investigate: the filter stops converging around scan ~400 on `eee_03`
+        (hits the `max_iterations=5` cap without reaching `convergence_tol`).
+        This coincides with motion onset (scans 100-300 are static and converge
+        in 2-4 iters), so it is likely a motion/tuning issue rather than slow
+        drift. Candidates: too few iterations for fast motion, association
+        breaking down under larger inter-scan motion, deskew quality, or poor
+        initialization feeding bad velocity/bias. Quantify against ground truth
+        first, then tune.
 - [ ] Optional: ROS2 publisher for RViz visualization
