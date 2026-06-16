@@ -4,18 +4,6 @@
 
 ImuPropagator::ImuPropagator(const NoiseParams& noise) : noise_(noise) {}
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-Eigen::Matrix3d ImuPropagator::skew(const Eigen::Vector3d& v) {
-  Eigen::Matrix3d S;
-  // clang-format off
-  S <<    0, -v.z(),  v.y(),
-       v.z(),     0, -v.x(),
-      -v.y(),  v.x(),     0;
-  // clang-format on
-  return S;
-}
-
 // ── midpoint integration
 // ──────────────────────────────────────────────────────
 

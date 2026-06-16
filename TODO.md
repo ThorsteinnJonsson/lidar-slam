@@ -120,23 +120,137 @@ Deferred refinements (revisit after the iEKF works):
 
 ## Phase 5: State Estimation (iEKF)
 
-- [ ] Error-state representation (position, velocity, rotation, IMU biases, gravity)
-- [ ] Measurement model — point-to-plane residuals and Jacobians
-- [ ] Iterated EKF update loop
-- [ ] Outlier rejection (chi-squared test on residuals)
-- [ ] Online LiDAR↔IMU extrinsic estimation (stretch) — add `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²) as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant dynamics, driven by the point-to-plane Jacobian. Currently `T_imu_lidar` is fixed from YAML (`imu_from_lidar()`). Watch observability — translation needs sufficient motion excitation, can drift/hurt accuracy otherwise.
+Iterated error-state EKF (FAST-LIO2 / IKFoM style) over the existing 18-DOF state
+`[R, p, v, b_g, b_a, gravity]`, error `δx = [δθ, δp, δv, δb_g, δb_a, δg]` (right
+perturbation `R = R̄·Exp(δθ)`). Predict is already done
+(`ImuPropagator::propagate_with_covariance`); this phase is the measurement
+update. New module under `src/estimator/`. Filter runs in `double`; float
+`PlaneMatch` values are cast at H-build time.
+
+Measurement model (per correspondence): `p_W = R·p_I + p` with
+`p_I = T_imu_lidar · p_L` fixed; residual `h = n̂ᵀ(R·p_I + p) + d`. Linearized
+row of H (1×18): `δθ` block `-n̂ᵀ R [p_I]ₓ`, `δp` block `n̂ᵀ`, rest zero
+(v / biases / gravity corrected only through P cross-terms in a single frame).
+
+The iEKF passes lidar points pre-multiplied by `T_imu_lidar` (so they are in the
+IMU frame) and `T_world_body = T_WI` to `associate_planes`; the returned
+`PlaneMatch.point` is then exactly `p_I` and `residual` is `n̂ᵀp_W + d`.
+Decision: **re-associate every iteration** with the current pose (FAST-LIO2
+accurate), not a fixed iter-0 plane set.
+
+- [x] 5.1 `⊞`/`⊟` on `State` — `boxplus(State, δx)` (right perturbation
+      `R·Exp(δθ)`, rest additive), `boxminus(State, State)`
+      (`log(b.R⁻¹·a.R)` + subtraction), `Vector18` alias (`src/imu/state.h`,
+      header-only inline). Tests (6): zero-increment identity, boxminus-of-self,
+      both round-trip directions, right-perturbation rotation, linear blocks
+      (`tests/state_test.cpp`).
+- [x] 5.2 Measurement build — `build_measurement(State, vector<PlaneMatch>)`
+      returns `LinearizedMeasurement{H (m×18), z (m)}`
+      (`src/estimator/measurement.{h,cpp}`). `H` rows: δθ block `-nᵀR[p_I]ₓ`,
+      δp block `nᵀ`, rest zero; `z` echoes the (current-state) match residuals.
+      Contract: matches must come from `associate_planes` at the same state.
+      Tests (4): central finite-difference vs analytic H over all 18 columns,
+      unobserved blocks zero, residual echo, empty system
+      (`tests/measurement_test.cpp`).
+- [x] 5.3 Iterated update — `iterated_update(x̂, P, measure, cfg)` in
+      `src/estimator/iekf.{h,cpp}`, where `measure` is a
+      `std::function<LinearizedMeasurement(State)>` (callback so the loop is
+      testable without the map; 5.5 supplies associate+build, tests supply
+      synthetic planes). Info-form gain `K = (HᵀR⁻¹H + P⁻¹)⁻¹HᵀR⁻¹` via `ldlt`
+      on the 18×18 (never m×m), correction `δx = -Kz - (I-KH)·boxminus(xʲ, x̂)`
+      (boxminus-Jacobian `J ≈ I`), `xʲ⁺¹ = boxplus(xʲ, δx)`, converge on `‖δx‖`,
+      then `P⁺ = (I-KH)P` resymmetrized. `IekfConfig{sigma=0.01, max_iterations=5,
+      convergence_tol=1e-3}`; `EkfResult{state, covariance, iterations, converged}`.
+      Empty correspondences return the prior unchanged. Tests (4): pulls pose to
+      truth, iteration beats a single step on a large error, `P⁺`
+      symmetric/PSD/shrinks (incl. pose block), empty-system no-op
+      (`tests/iekf_test.cpp`).
+- [x] 5.4 Outlier rejection — Mahalanobis chi-squared gate
+      `gate_measurement(m, P, σ, chi2)` (`src/estimator/outlier.{h,cpp}`): drops
+      rows where `zᵢ²/(HᵢPHᵢᵀ + σ²) > chi2_thresh`. Normalizing by the full
+      innovation variance (not σ² alone) loosens the gate under prior
+      uncertainty and tightens it as the estimate firms up. Called from
+      `iterated_update` each iteration, guarded by `IekfConfig{reject_outliers=
+      true, outlier_chi2=3.841}` (χ²₁ 95%). Tests: unit (keeps inliers, drops
+      gross outliers, threshold monotonicity, larger-prior-keeps-borderline,
+      empty) in `tests/outlier_test.cpp`; integration (gate recovers truth from
+      8 gross outliers that drag the ungated solve off) in `tests/iekf_test.cpp`.
+      Note: this is a principled upgrade over FAST-LIO2, which uses a
+      range-scaled distance heuristic (`s = 1 - 0.9·|d|/√range`) rather than a
+      statistical test.
+- [x] 5.5 Pipeline glue — `IteratedEkf` (`src/estimator/iterated_ekf.{h,cpp}`)
+      owns the running estimate `(x, P)` and the ikd-tree map.
+      `process_scan(imu, points_lidar)`: predict over the IMU window
+      (consecutive `propagate_with_covariance` steps), then run
+      `iterated_update` with the real `MeasurementFn` (lidar points are folded
+      into the IMU frame once via `T_imu_lidar`, then re-associated against the
+      live iterate each iteration: `associate_planes` → `build_measurement`),
+      then insert the registered world-frame points into the map (`build` when
+      empty, else `insert`). First scan: empty map, update no-ops, the scan
+      seats the map. Decisions: pre-deskewed lidar points + an IMU-measurement
+      vector as the contract (deskew/voxel orchestration stays in the caller);
+      class kept separate from the pure `iterated_update` math. Deferred (as in
+      Phase 4): map region cropping via `remove_box`, voxel-downsample-on-insert,
+      static IMU initialization (Phase 6). Tests (3, `tests/iterated_ekf_test.cpp`):
+      seats map on first scan, static sensor holds pose over 20 scans,
+      constant-velocity with a wrong velocity seed tracks truth with bounded
+      error (synthetic box room of planes spanning all axes + consistent IMU).
+- [ ] 5.6 Online LiDAR↔IMU extrinsic estimation (stretch, deferred) — add
+      `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²)
+      as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant
+      dynamics, driven by the point-to-plane Jacobian. Currently `T_imu_lidar` is
+      fixed from YAML (`imu_from_lidar()`). Watch observability: translation
+      needs motion excitation, can drift/hurt accuracy otherwise.
 
 ---
 
 ## Phase 6: Pipeline
 
-- [ ] Main SLAM loop tying all phases together
-- [ ] Initialization (static IMU init for gravity/bias estimation)
+Next up, in order: (1) proper initialization, (2) map cropping, (3) ground-truth
+comparison (Phase 7).
+
+- [x] Main SLAM loop tying all phases together — `main.cpp` streams the bag,
+      buffers IMU, and syncs clouds with a pending queue (a cloud is processed
+      only once the IMU buffer covers its `[last_ref, t_end]` window, since the
+      IMU around scan-end arrives after the cloud message). Per scan:
+      `build_scan_trajectory` → `deskew` → `voxel_downsample(0.5)` →
+      `IteratedEkf::process_scan` → append pose to `trajectory.tum`. Verified on
+      `eee_03`: ~1814 scans, smooth indoor trajectory, no divergence.
+- [ ] Proper initialization — replace the `static_init` shortcut in `main.cpp`
+      (currently `gravity = -mean(accel)`, `b_g = mean(gyro)`, `R = I`, which
+      folds any accel bias into gravity, so `|g|` came out 9.64 not 9.81).
+      Needed:
+  - [ ] Stationarity check over the init window (accel/gyro variance gate)
+        before trusting the average, instead of blindly using the first 200
+        samples.
+  - [ ] Separate gravity from accel bias: pin `|g|` to the known local value and
+        attribute the residual specific force to `b_a`.
+  - [ ] Align initial orientation to gravity: set `R` so measured gravity points
+        along world-down (fixes roll/pitch; yaw stays free/unobservable).
+  - [ ] Seed `P` to match the init confidence instead of a flat `0.01·I`.
+- [ ] Map cropping (sliding-window map) — bound the ikd-tree as the sensor
+      moves, using the existing `remove_box`: keep a local cube around the
+      current position and box-delete everything outside it (FAST-LIO2 "map
+      sliding"). Currently the map grows unbounded (~2.4M points by scan 500 on
+      `eee_03`); this caps memory and keeps k-NN fast on long sequences. Pairs
+      with the deferred voxel-downsample-on-insert for fixed map resolution.
 
 ---
 
 ## Phase 7: Evaluation
 
-- [ ] Pose trajectory output (TUM format)
-- [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics)
+- [x] Pose trajectory output (TUM format) — `main.cpp` writes `trajectory.tum`
+      (`t tx ty tz qx qy qz qw`), one line per processed scan.
+- [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics) — the dataset
+      ground truth is the Leica prism (`leica_prism.yaml` / the bag's pose
+      topic), which is position-only and in its own frame, so align (umeyama /
+      `evo`-style) before computing ATE/RTE. Compare `trajectory.tum` against it.
+  - [ ] Investigate: the filter stops converging around scan ~400 on `eee_03`
+        (hits the `max_iterations=5` cap without reaching `convergence_tol`).
+        This coincides with motion onset (scans 100-300 are static and converge
+        in 2-4 iters), so it is likely a motion/tuning issue rather than slow
+        drift. Candidates: too few iterations for fast motion, association
+        breaking down under larger inter-scan motion, deskew quality, or poor
+        initialization feeding bad velocity/bias. Quantify against ground truth
+        first, then tune.
 - [ ] Optional: ROS2 publisher for RViz visualization
