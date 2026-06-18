@@ -216,18 +216,23 @@ comparison (Phase 7).
       `build_scan_trajectory` → `deskew` → `voxel_downsample(0.5)` →
       `IteratedEkf::process_scan` → append pose to `trajectory.tum`. Verified on
       `eee_03`: ~1814 scans, smooth indoor trajectory, no divergence.
-- [ ] Proper initialization — replace the `static_init` shortcut in `main.cpp`
-      (currently `gravity = -mean(accel)`, `b_g = mean(gyro)`, `R = I`, which
-      folds any accel bias into gravity, so `|g|` came out 9.64 not 9.81).
-      Needed:
-  - [ ] Stationarity check over the init window (accel/gyro variance gate)
-        before trusting the average, instead of blindly using the first 200
-        samples.
-  - [ ] Separate gravity from accel bias: pin `|g|` to the known local value and
-        attribute the residual specific force to `b_a`.
-  - [ ] Align initial orientation to gravity: set `R` so measured gravity points
-        along world-down (fixes roll/pitch; yaw stays free/unobservable).
-  - [ ] Seed `P` to match the init confidence instead of a flat `0.01·I`.
+- [x] Proper initialization — new `src/imu/initializer.{h,cpp}`
+      (`initialize_static`), replacing the `static_init` shortcut in `main.cpp`.
+      `main.cpp` now slides a 200-sample window until a stationary stretch
+      passes the gate, then seeds the EKF from the `InitResult`. Tests (6) in
+      `tests/initializer_test.cpp`. Done:
+  - [x] Stationarity check over the init window (per-axis accel/gyro variance
+        gate) before trusting the average.
+  - [x] Separate gravity from accel bias (option A): pin `|g|` to the known
+        local value (9.78, Singapore) and leave `b_a = 0` for the filter to
+        learn under motion (at rest gravity and `b_a` are indistinguishable).
+        Verified on `eee_03`: measured `|accel| = 9.637`, so the ~0.14 m/s^2
+        deficit now becomes accel bias instead of corrupting gravity.
+  - [x] Align initial orientation to gravity: `R` rotates measured "up" onto
+        world up via minimal-arc (`FromTwoVectors`), fixing roll/pitch; yaw is a
+        gauge freedom fixed to zero by definition.
+  - [x] Seed `P` from per-block std-devs: tight on attitude/position/gravity
+        (measured or gauge-fixed), loose only on accel bias (genuinely unknown).
 - [ ] Map cropping (sliding-window map) — bound the ikd-tree as the sensor
       moves, using the existing `remove_box`: keep a local cube around the
       current position and box-delete everything outside it (FAST-LIO2 "map

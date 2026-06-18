@@ -8,9 +8,11 @@ add_executable(unit_tests
     iekf_test.cpp
     outlier_test.cpp
     iterated_ekf_test.cpp
+    initializer_test.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
     ${CMAKE_SOURCE_DIR}/src/imu/propagator.cpp
+    ${CMAKE_SOURCE_DIR}/src/imu/initializer.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/measurement.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/iekf.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/outlier.cpp

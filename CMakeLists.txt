@@ -24,6 +24,7 @@ add_executable(lidar_slam
     src/io/ros_deserializer.cpp
     src/imu/buffer.cpp
     src/imu/propagator.cpp
+    src/imu/initializer.cpp
     src/preprocess/deskew.cpp
     src/preprocess/voxel_grid.cpp
     src/map/ikd_tree.cpp
