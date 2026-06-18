@@ -8,6 +8,7 @@
 
 #include "estimator/iterated_ekf.h"
 #include "imu/buffer.h"
+#include "imu/initializer.h"
 #include "imu/propagator.h"
 #include "imu/state.h"
 #include "io/bag_reader.h"
@@ -38,25 +39,6 @@ std::vector<Eigen::Vector3f> to_points(const PointCloud& c) {
   for (size_t i = 0; i < c.size(); ++i)
     pts.emplace_back(c.x[i], c.y[i], c.z[i]);
   return pts;
-}
-
-// Static initialization: with the platform at rest the accelerometer reads the
-// specific force -g, so gravity = -mean(accel); the gyro bias is the mean rate.
-State static_init(const std::vector<ImuMeasurement>& imu) {
-  Eigen::Vector3d accel_sum = Eigen::Vector3d::Zero();
-  Eigen::Vector3d gyro_sum = Eigen::Vector3d::Zero();
-  for (const ImuMeasurement& m : imu) {
-    accel_sum += m.linear_acceleration;
-    gyro_sum += m.angular_velocity;
-  }
-  const double n = static_cast<double>(imu.size());
-  State s;  // R = I, p = v = b_a = 0
-  s.gravity = -accel_sum / n;
-  s.b_g = gyro_sum / n;
-  spdlog::info(
-      "Static init: |g| = {:.4f} m/s^2, b_g = [{:.4e}, {:.4e}, {:.4e}]",
-      s.gravity.norm(), s.b_g.x(), s.b_g.y(), s.b_g.z());
-  return s;
 }
 
 }  // namespace
@@ -137,10 +119,21 @@ int main() {
           if (!ekf) {
             init_imu.push_back(m);
             if (init_imu.size() >= kInitImuCount) {
-              ekf.emplace(noise, T_imu_lidar, IekfConfig{}, PlaneAssocParams{},
-                          static_init(init_imu),
-                          Eigen::Matrix<double, 18, 18>::Identity() * 0.01);
-              last_ref = init_imu.back().stamp.to_nsec();
+              const InitResult init = initialize_static(init_imu, InitParams{});
+              if (init.ok) {
+                spdlog::info(
+                    "Static init OK: |accel| = {:.4f} m/s^2, accel_var = "
+                    "{:.2e}, gyro_var = {:.2e}, b_g = [{:.2e}, {:.2e}, {:.2e}]",
+                    init.accel_mean_norm, init.max_accel_var, init.max_gyro_var,
+                    init.state.b_g.x(), init.state.b_g.y(), init.state.b_g.z());
+                ekf.emplace(noise, T_imu_lidar, IekfConfig{},
+                            PlaneAssocParams{}, init.state, init.cov);
+                last_ref = init_imu.back().stamp.to_nsec();
+              } else {
+                // Platform is moving: slide the window and keep waiting for a
+                // stationary stretch.
+                init_imu.erase(init_imu.begin());
+              }
             }
           }
         } else if (topic == lidar_cal.topic &&
