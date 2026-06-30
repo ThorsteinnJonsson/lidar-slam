@@ -38,11 +38,11 @@ plus `eee_03.bag`).
 Each run writes three [TUM-format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
 trajectories (`timestamp tx ty tz qx qy qz qw`) into `evaluation/`:
 
-| File | Contents |
-|---|---|
-| `trajectory.tum` | estimated IMU pose in the SLAM world frame |
-| `prism.tum` | estimate at the Leica prism (lever arm applied), for prism-to-prism comparison |
-| `gt.tum` | Leica prism ground truth from `/leica/pose/relative` (position only) |
+| File             | Contents                                                                       |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `trajectory.tum` | estimated IMU pose in the SLAM world frame                                     |
+| `prism.tum`      | estimate at the Leica prism (lever arm applied), for prism-to-prism comparison |
+| `gt.tum`         | Leica prism ground truth from `/leica/pose/relative` (position only)           |
 
 Metrics are computed offline with [evo](https://github.com/MichaelGrupp/evo).
 The ground truth is position-only and in its own frame, so align before comparing
@@ -52,6 +52,7 @@ Install once into a virtualenv:
 ```bash
 python3 -m venv ~/.venvs/evo   # needs python3-venv for ensurepip
 ~/.venvs/evo/bin/pip install evo
+source ~/.venvs/evo/bin/activate.fish # Or equivalent for bash
 ```
 
 Absolute trajectory error (ATE) and relative pose error (RPE / drift):
