@@ -26,7 +26,7 @@ class IteratedEkf {
   IteratedEkf(const NoiseParams& noise, const Sophus::SE3d& T_imu_lidar,
               const IekfConfig& cfg, const PlaneAssocParams& assoc,
               const State& x0, const Eigen::Matrix<double, 18, 18>& P0,
-              const MapCropParams& crop = {});
+              const LocalMapParams& map_params = {});
 
   // Process one scan. `imu` spans [previous scan ref, this scan ref] with
   // interpolated endpoints (as ImuBuffer::get_between returns); the state is

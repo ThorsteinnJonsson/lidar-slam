@@ -249,11 +249,17 @@ comparison (Phase 7).
       (5.7 m loop never nears the box edge); the ~2.4M-point growth there is
       duplicate re-insertion, addressed by voxel-on-insert below. Tune the cube
       size against an outdoor/large sequence during eval.
-- [ ] Voxel-downsample-on-insert — snap each inserted map point to a global voxel
-      grid and keep one point per occupied cell, so re-observing a surface does
-      not pile up duplicates. This is the real fix for the `eee_03` map growth
-      (caps the map at the number of distinct voxels in the building, holds
-      flat). Pairs with map cropping for fixed resolution + bounded extent.
+- [x] Voxel-downsample-on-insert — `LocalMap::insert` gates each registered
+      point with a k-NN distance test: keep it only when no existing map point
+      lies within `voxel_leaf` (default 0.5 m), so re-observing a surface does
+      not pile up near-duplicates. Stateless (queries the live tree, so it stays
+      consistent with cropping) rather than a separate occupancy set. Config
+      folded into `LocalMapParams{crop, voxel_on_insert=true, voxel_leaf=0.5}`
+      on the `IteratedEkf` ctor (defaulted). Tests (5) in
+      `tests/local_map_test.cpp`. Verified on `eee_03`: map at scan 500 dropped
+      from ~2.4M to 89k pts, final map 333k (grows with explored space, not scan
+      count), static phase stays flat ~5k, full run 3.5 min -> 1:26 (~2.5x
+      faster, smaller tree speeds association), peak RAM 41 MB.
 
 ---
 

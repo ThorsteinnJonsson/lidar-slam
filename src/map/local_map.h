@@ -39,11 +39,23 @@ bool box_needs_slide(const Eigen::Vector3f& center, const Eigen::Vector3f& lo,
 void crop_to_box(IkdTree& tree, const Eigen::Vector3f& lo,
                  const Eigen::Vector3f& hi);
 
+// Map management policy: the sliding-window crop plus voxel-on-insert
+// resolution control. Both default on; defaults are sane for a lidar-scale
+// outdoor scene.
+struct LocalMapParams {
+  MapCropParams crop;
+  bool voxel_on_insert{true};
+  float voxel_leaf{0.5f};  // map resolution (m); match the per-scan leaf
+};
+
 class LocalMap {
  public:
-  explicit LocalMap(const MapCropParams& crop = {}) : crop_(crop) {}
+  explicit LocalMap(const LocalMapParams& params = {}) : params_(params) {}
 
   // Insert registered world-frame points; builds the tree on the first call.
+  // With voxel-on-insert enabled, a point is kept only when no existing map
+  // point lies within voxel_leaf of it, so re-observing a surface does not pile
+  // up near-duplicates and the map holds a fixed resolution.
   void insert(std::vector<Eigen::Vector3f> world_points);
 
   // Slide the keep-cube to follow the sensor, box-deleting points that fall
@@ -57,7 +69,7 @@ class LocalMap {
 
  private:
   IkdTree tree_;
-  MapCropParams crop_;
+  LocalMapParams params_;
   Eigen::Vector3f box_min_{Eigen::Vector3f::Zero()};
   Eigen::Vector3f box_max_{Eigen::Vector3f::Zero()};
   bool box_initialized_{false};

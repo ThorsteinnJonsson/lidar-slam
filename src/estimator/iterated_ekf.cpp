@@ -6,8 +6,8 @@ IteratedEkf::IteratedEkf(const NoiseParams& noise,
                          const Sophus::SE3d& T_imu_lidar, const IekfConfig& cfg,
                          const PlaneAssocParams& assoc, const State& x0,
                          const Eigen::Matrix<double, 18, 18>& P0,
-                         const MapCropParams& crop)
-    : map_(crop),
+                         const LocalMapParams& map_params)
+    : map_(map_params),
       x_(x0),
       P_(P0),
       propagator_(noise),
