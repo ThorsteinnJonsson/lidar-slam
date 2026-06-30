@@ -5,8 +5,10 @@
 IteratedEkf::IteratedEkf(const NoiseParams& noise,
                          const Sophus::SE3d& T_imu_lidar, const IekfConfig& cfg,
                          const PlaneAssocParams& assoc, const State& x0,
-                         const Eigen::Matrix<double, 18, 18>& P0)
-    : x_(x0),
+                         const Eigen::Matrix<double, 18, 18>& P0,
+                         const MapCropParams& crop)
+    : map_(crop),
+      x_(x0),
       P_(P0),
       propagator_(noise),
       T_imu_lidar_(T_imu_lidar),
@@ -36,26 +38,23 @@ EkfResult IteratedEkf::process_scan(
   // ────────────
   const MeasurementFn measure = [&](const State& x) {
     const Sophus::SE3f T_WI(x.R.cast<float>(), x.p.cast<float>());
-    return build_measurement(x,
-                             associate_planes(map_, points_imu, T_WI, assoc_));
+    return build_measurement(
+        x, associate_planes(map_.tree(), points_imu, T_WI, assoc_));
   };
   const EkfResult result = iterated_update(x_, P_, measure, cfg_);
   x_ = result.state;
   P_ = result.covariance;
 
-  // ── Map: insert the registered scan in world frame
-  // ──────────────────────────
+  // ── Map: fold in the registered scan, then bound to the sliding window
+  // ──────
   const Sophus::SE3d T_WI(x_.R, x_.p);
   std::vector<Eigen::Vector3f> world;
   world.reserve(points_imu.size());
   for (const Eigen::Vector3f& p_I : points_imu) {
     world.push_back((T_WI * p_I.cast<double>()).cast<float>());
   }
-  if (map_.size() == 0) {
-    map_.build(std::move(world));
-  } else {
-    map_.insert(world);
-  }
+  map_.insert(std::move(world));
+  map_.recenter(x_.p.cast<float>());
 
   return result;
 }

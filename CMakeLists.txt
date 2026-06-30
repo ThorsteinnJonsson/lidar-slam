@@ -29,6 +29,7 @@ add_executable(lidar_slam
     src/preprocess/voxel_grid.cpp
     src/map/ikd_tree.cpp
     src/map/association.cpp
+    src/map/local_map.cpp
     src/estimator/measurement.cpp
     src/estimator/iekf.cpp
     src/estimator/outlier.cpp

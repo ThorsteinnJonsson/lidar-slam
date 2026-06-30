@@ -2,13 +2,21 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "cmake build debug",
+      "label": "cmake build active",
       "type": "shell",
-      "command": "cmake --build --preset debug",
+      "command": "cmake",
+      "args": ["--build", "${command:cmake.buildDirectory}"],
       "group": {
         "kind": "build",
         "isDefault": true
       },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "cmake build debug",
+      "type": "shell",
+      "command": "cmake --build --preset debug",
+      "group": "build",
       "problemMatcher": ["$gcc"]
     }
   ]

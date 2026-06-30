@@ -233,12 +233,27 @@ comparison (Phase 7).
         gauge freedom fixed to zero by definition.
   - [x] Seed `P` from per-block std-devs: tight on attitude/position/gravity
         (measured or gauge-fixed), loose only on accel bias (genuinely unknown).
-- [ ] Map cropping (sliding-window map) — bound the ikd-tree as the sensor
-      moves, using the existing `remove_box`: keep a local cube around the
-      current position and box-delete everything outside it (FAST-LIO2 "map
-      sliding"). Currently the map grows unbounded (~2.4M points by scan 500 on
-      `eee_03`); this caps memory and keeps k-NN fast on long sequences. Pairs
-      with the deferred voxel-downsample-on-insert for fixed map resolution.
+- [x] Map cropping (sliding-window map) — extracted a `LocalMap`
+      (`src/map/local_map.{h,cpp}`) that owns the ikd-tree plus its growth/crop
+      policy; `IteratedEkf` just drives it (`map_.insert(...)` /
+      `map_.recenter(...)`), keeping the estimator focused on estimation.
+      `LocalMap::recenter` keeps the map to a cube of half-side
+      `keep_half_extent` around the sensor; when the position comes within
+      `slide_margin` of a face, the cube recenters and `crop_to_box` box-deletes
+      the six outer slabs (FAST-LIO2 "map sliding"). Lazy box init on the first
+      call; hysteresis means most scans cost only six comparisons.
+      `MapCropParams{enabled, keep_half_extent=150, slide_margin=30}` on the
+      `IteratedEkf` ctor (defaulted). Free helpers `box_needs_slide` /
+      `crop_to_box` are unit-tested (`tests/map_crop_test.cpp`, 4 tests). NOTE:
+      this is a no-op on `eee_03`
+      (5.7 m loop never nears the box edge); the ~2.4M-point growth there is
+      duplicate re-insertion, addressed by voxel-on-insert below. Tune the cube
+      size against an outdoor/large sequence during eval.
+- [ ] Voxel-downsample-on-insert — snap each inserted map point to a global voxel
+      grid and keep one point per occupied cell, so re-observing a surface does
+      not pile up duplicates. This is the real fix for the `eee_03` map growth
+      (caps the map at the number of distinct voxels in the building, holds
+      flat). Pairs with map cropping for fixed resolution + bounded extent.
 
 ---
 
