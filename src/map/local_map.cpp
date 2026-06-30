@@ -36,14 +36,14 @@ void LocalMap::insert(std::vector<Eigen::Vector3f> world_points) {
 void LocalMap::recenter(const Eigen::Vector3f& sensor_pos) {
   if (!crop_.enabled) return;
   const Eigen::Vector3f half =
-      Eigen::Vector3f::Constant(crop_.keep_half_extent);
+      Eigen::Vector3f::Constant(crop_.keep_half_extent());
   if (!box_initialized_) {
     box_min_ = sensor_pos - half;
     box_max_ = sensor_pos + half;
     box_initialized_ = true;
     return;  // box just seated; nothing outside it yet
   }
-  if (!box_needs_slide(sensor_pos, box_min_, box_max_, crop_.slide_margin)) {
+  if (!box_needs_slide(sensor_pos, box_min_, box_max_, crop_.slide_margin())) {
     return;
   }
   box_min_ = sensor_pos - half;

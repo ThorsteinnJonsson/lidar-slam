@@ -10,15 +10,24 @@
 // estimator can stay focused on estimation and just drive it.
 
 // Sliding-window map bound (FAST-LIO2 "map sliding"). The map is kept to a cube
-// of half-side keep_half_extent centered near the sensor; when the sensor comes
-// within slide_margin of a face the cube recenters on the current position and
-// everything outside is box-deleted. Bounds memory and keeps k-NN fast on long
-// trajectories. Note: on a small loop where every surface stays in range the
-// box never slides, so this is a no-op there.
+// centered near the sensor; when the sensor comes within the slide margin of a
+// face the cube recenters on the current position and everything outside is
+// box-deleted. Bounds memory and keeps k-NN fast on long trajectories.
+//
+// Both extents derive from the sensor range so the kept cube always contains
+// everything the lidar can currently observe. The margin must exceed the range
+// (FAST-LIO2 uses MOV_THRESHOLD = 1.5): if the sensor got closer than its range
+// to a face, it would be observing surface outside the cube, and cropping would
+// delete points association still needs. keep_factor > margin_factor keeps a
+// stable band inside the margin so a recenter does not immediately retrigger.
 struct MapCropParams {
   bool enabled{true};
-  float keep_half_extent{150.0f};  // half side of the local map cube (m)
-  float slide_margin{30.0f};       // recenter when within this of a face (m)
+  float sensor_range{300.0f};  // lidar detection range (m)
+  float margin_factor{1.5f};   // slide within margin_factor*range of a face
+  float keep_factor{2.0f};     // keep cube half-side = keep_factor*range
+
+  float slide_margin() const { return margin_factor * sensor_range; }
+  float keep_half_extent() const { return keep_factor * sensor_range; }
 };
 
 // True if `center` is within `margin` of any face of the closed box [lo, hi].
