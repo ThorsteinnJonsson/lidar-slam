@@ -10,6 +10,7 @@ add_executable(unit_tests
     iterated_ekf_test.cpp
     initializer_test.cpp
     map_crop_test.cpp
+    local_map_test.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
     ${CMAKE_SOURCE_DIR}/src/map/local_map.cpp
