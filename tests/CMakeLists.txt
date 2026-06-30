@@ -12,6 +12,7 @@ add_executable(unit_tests
     map_crop_test.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
+    ${CMAKE_SOURCE_DIR}/src/map/local_map.cpp
     ${CMAKE_SOURCE_DIR}/src/imu/propagator.cpp
     ${CMAKE_SOURCE_DIR}/src/imu/initializer.cpp
     ${CMAKE_SOURCE_DIR}/src/estimator/measurement.cpp

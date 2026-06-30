@@ -3,8 +3,8 @@
 #include <Eigen/Core>
 #include <vector>
 
-#include "estimator/iterated_ekf.h"
 #include "map/ikd_tree.h"
+#include "map/local_map.h"
 
 namespace {
 
