@@ -19,11 +19,33 @@
 // The pure update math lives in iterated_update (iekf.h); this class supplies
 // the real MeasurementFn (associate_planes + build_measurement, re-associated
 // every iteration against the live iterate) and manages map growth.
+
+// Sliding-window map bound (FAST-LIO2 "map sliding"). The map is kept to a cube
+// of half-side keep_half_extent centered near the sensor; when the sensor comes
+// within slide_margin of a face the cube recenters on the current position and
+// everything outside is box-deleted. Bounds memory and keeps k-NN fast on long
+// trajectories.
+struct MapCropParams {
+  bool enabled{true};
+  float keep_half_extent{150.0f};  // half side of the local map cube (m)
+  float slide_margin{30.0f};       // recenter when within this of a face (m)
+};
+
+// True if `center` is within `margin` of any face of the closed box [lo, hi].
+bool box_needs_slide(const Eigen::Vector3f& center, const Eigen::Vector3f& lo,
+                     const Eigen::Vector3f& hi, float margin);
+
+// Box-delete every point outside the closed cube [lo, hi] from `tree` (six
+// outer slabs). Points exactly on the cube boundary are kept.
+void crop_to_box(IkdTree& tree, const Eigen::Vector3f& lo,
+                 const Eigen::Vector3f& hi);
+
 class IteratedEkf {
  public:
   IteratedEkf(const NoiseParams& noise, const Sophus::SE3d& T_imu_lidar,
               const IekfConfig& cfg, const PlaneAssocParams& assoc,
-              const State& x0, const Eigen::Matrix<double, 18, 18>& P0);
+              const State& x0, const Eigen::Matrix<double, 18, 18>& P0,
+              const MapCropParams& crop = {});
 
   // Process one scan. `imu` spans [previous scan ref, this scan ref] with
   // interpolated endpoints (as ImuBuffer::get_between returns); the state is
@@ -39,6 +61,9 @@ class IteratedEkf {
   const IkdTree& map() const { return map_; }
 
  private:
+  // Bound the map to the local sliding-window cube around the current position.
+  void crop_map();
+
   IkdTree map_;
   State x_;
   Eigen::Matrix<double, 18, 18> P_;
@@ -46,4 +71,8 @@ class IteratedEkf {
   Sophus::SE3d T_imu_lidar_;
   IekfConfig cfg_;
   PlaneAssocParams assoc_;
+  MapCropParams crop_;
+  Eigen::Vector3f box_min_{Eigen::Vector3f::Zero()};
+  Eigen::Vector3f box_max_{Eigen::Vector3f::Zero()};
+  bool box_initialized_{false};
 };

@@ -1,17 +1,63 @@
 #include "estimator/iterated_ekf.h"
 
+#include <cmath>
+
 #include "estimator/measurement.h"
+
+bool box_needs_slide(const Eigen::Vector3f& center, const Eigen::Vector3f& lo,
+                     const Eigen::Vector3f& hi, float margin) {
+  for (int a = 0; a < 3; ++a) {
+    if (center[a] - lo[a] < margin || hi[a] - center[a] < margin) return true;
+  }
+  return false;
+}
+
+void crop_to_box(IkdTree& tree, const Eigen::Vector3f& lo,
+                 const Eigen::Vector3f& hi) {
+  constexpr float kBig = 1e9f;
+  const Eigen::Vector3f big = Eigen::Vector3f::Constant(kBig);
+  for (int a = 0; a < 3; ++a) {
+    // Slab below lo[a]: full extent on the other axes, capped just under lo[a]
+    // so points exactly on the kept boundary survive.
+    Eigen::Vector3f below_max = big;
+    below_max[a] = std::nextafter(lo[a], -kBig);
+    tree.remove_box(-big, below_max);
+    // Slab above hi[a].
+    Eigen::Vector3f above_min = -big;
+    above_min[a] = std::nextafter(hi[a], kBig);
+    tree.remove_box(above_min, big);
+  }
+}
 
 IteratedEkf::IteratedEkf(const NoiseParams& noise,
                          const Sophus::SE3d& T_imu_lidar, const IekfConfig& cfg,
                          const PlaneAssocParams& assoc, const State& x0,
-                         const Eigen::Matrix<double, 18, 18>& P0)
+                         const Eigen::Matrix<double, 18, 18>& P0,
+                         const MapCropParams& crop)
     : x_(x0),
       P_(P0),
       propagator_(noise),
       T_imu_lidar_(T_imu_lidar),
       cfg_(cfg),
-      assoc_(assoc) {}
+      assoc_(assoc),
+      crop_(crop) {}
+
+void IteratedEkf::crop_map() {
+  if (!crop_.enabled) return;
+  const Eigen::Vector3f center = x_.p.cast<float>();
+  const Eigen::Vector3f half =
+      Eigen::Vector3f::Constant(crop_.keep_half_extent);
+  if (!box_initialized_) {
+    box_min_ = center - half;
+    box_max_ = center + half;
+    box_initialized_ = true;
+    return;  // box just seated; nothing outside it yet
+  }
+  if (!box_needs_slide(center, box_min_, box_max_, crop_.slide_margin)) return;
+  box_min_ = center - half;
+  box_max_ = center + half;
+  crop_to_box(map_, box_min_, box_max_);
+}
 
 EkfResult IteratedEkf::process_scan(
     const std::vector<ImuMeasurement>& imu,
@@ -56,6 +102,10 @@ EkfResult IteratedEkf::process_scan(
   } else {
     map_.insert(world);
   }
+
+  // ── Map: bound to the local sliding-window cube
+  // ──────────────────────────────
+  crop_map();
 
   return result;
 }
