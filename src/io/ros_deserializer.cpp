@@ -157,6 +157,36 @@ ImuMeasurement deserialize_imu(std::span<const std::byte> data) {
   return imu;
 }
 
+// ── geometry_msgs/PoseStamped
+// ─────────────────────────────────────────────────
+//
+// Wire layout (little-endian):
+//   std_msgs/Header: uint32 seq, uint32 secs, uint32 nsecs, string frame_id
+//   geometry_msgs/Point: float64 x, y, z          (position)
+//   geometry_msgs/Quaternion: float64 x, y, z, w  (orientation)
+
+PoseStampedMsg deserialize_pose_stamped(std::span<const std::byte> data) {
+  SpanReader r(data);
+  PoseStampedMsg pose;
+
+  r.read<uint32_t>();  // seq
+  pose.stamp.secs = r.read<uint32_t>();
+  pose.stamp.nsecs = r.read<uint32_t>();
+  r.read_string();  // frame_id
+
+  pose.position.x() = r.read<double>();
+  pose.position.y() = r.read<double>();
+  pose.position.z() = r.read<double>();
+
+  const double ox = r.read<double>();
+  const double oy = r.read<double>();
+  const double oz = r.read<double>();
+  const double ow = r.read<double>();
+  pose.orientation = Eigen::Quaterniond(ow, ox, oy, oz);
+
+  return pose;
+}
+
 // ── sensor_msgs/PointCloud2
 // ───────────────────────────────────────────────────
 //

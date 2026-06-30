@@ -119,6 +119,17 @@ LidarCalibration load_lidar_calibration(const std::filesystem::path& path) {
   return cal;
 }
 
+PrismCalibration load_prism_calibration(const std::filesystem::path& path) {
+  std::string raw = read_stripped(path);
+  auto root = YAML::Load(raw);
+
+  PrismCalibration cal;
+  cal.topic = root["gndtr_topic"].as<std::string>();
+  cal.T_body_prism = parse_opencv_transform(root["T_Body_Prism"]);
+
+  return cal;
+}
+
 Sophus::SE3d imu_from_lidar(const ImuCalibration& imu,
                             const LidarCalibration& lidar) {
   const Eigen::Isometry3d iso = imu.T_body_imu.inverse() * lidar.T_body_lidar;

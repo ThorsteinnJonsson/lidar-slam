@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <deque>
+#include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <optional>
 #include <vector>
 
@@ -50,10 +52,16 @@ int main() {
   const std::string dataset = "datasets/ntu_viral/eee_03";
   const auto imu_cal = load_imu_calibration(dataset + "/imu_v100.yaml");
   const auto lidar_cal = load_lidar_calibration(dataset + "/lidar_horz.yaml");
+  const auto prism_cal = load_prism_calibration(dataset + "/leica_prism.yaml");
   const Sophus::SE3d T_imu_lidar = imu_from_lidar(imu_cal, lidar_cal);
 
-  spdlog::info("IMU  topic: {}, LiDAR topic: {}", imu_cal.topic,
-               lidar_cal.topic);
+  // Prism position in the IMU frame: the lever arm to apply to our estimate so
+  // it can be compared against the Leica prism ground truth.
+  const Eigen::Vector3d t_imu_prism =
+      (imu_cal.T_body_imu.inverse() * prism_cal.T_body_prism).translation();
+
+  spdlog::info("IMU  topic: {}, LiDAR topic: {}, GT topic: {}", imu_cal.topic,
+               lidar_cal.topic, prism_cal.topic);
 
   const NoiseParams noise{.gyro_noise_std = imu_cal.gyro_noise_std,
                           .accel_noise_std = imu_cal.accel_noise_std,
@@ -68,8 +76,18 @@ int main() {
   std::optional<IteratedEkf> ekf;
   uint64_t last_ref = 0;  // scan-end of the previously processed scan
   size_t scans = 0;
+  size_t gt_msgs = 0;
 
-  std::ofstream traj_out("trajectory.tum");
+  // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
+  const std::filesystem::path eval_dir = "evaluation";
+  std::filesystem::create_directories(eval_dir);
+  std::ofstream traj_out(eval_dir / "trajectory.tum");  // IMU pose
+  std::ofstream prism_out(eval_dir / "prism.tum");      // estimate at the prism
+  std::ofstream gt_out(eval_dir / "gt.tum");            // Leica prism GT
+  // Fixed, 9-decimal precision so the ~1.6e9 timestamps keep nanosecond
+  // resolution (the default 6 significant digits would destroy them).
+  for (std::ofstream* os : {&traj_out, &prism_out, &gt_out})
+    *os << std::fixed << std::setprecision(9);
 
   // Process every pending scan whose IMU window [last_ref, t_end] is buffered.
   const auto drain = [&] {
@@ -94,9 +112,15 @@ int main() {
 
       const Eigen::Vector3d& p = ekf->state().p;
       const Eigen::Quaterniond q = ekf->state().R.unit_quaternion();
-      traj_out << Timestamp::from_nsec(t_end).to_sec() << ' ' << p.x() << ' '
-               << p.y() << ' ' << p.z() << ' ' << q.x() << ' ' << q.y() << ' '
-               << q.z() << ' ' << q.w() << '\n';
+      const double t_sec = Timestamp::from_nsec(t_end).to_sec();
+      traj_out << t_sec << ' ' << p.x() << ' ' << p.y() << ' ' << p.z() << ' '
+               << q.x() << ' ' << q.y() << ' ' << q.z() << ' ' << q.w() << '\n';
+
+      // Estimate at the prism (lever arm applied), for prism-to-prism ATE.
+      // Orientation is irrelevant to position-only GT, so write identity.
+      const Eigen::Vector3d p_prism = p + ekf->state().R * t_imu_prism;
+      prism_out << t_sec << ' ' << p_prism.x() << ' ' << p_prism.y() << ' '
+                << p_prism.z() << " 0 0 0 1\n";
 
       if (scans % 100 == 0) {
         spdlog::info(
@@ -110,9 +134,17 @@ int main() {
   };
 
   reader.read_messages(
-      {imu_cal.topic, lidar_cal.topic},
+      {imu_cal.topic, lidar_cal.topic, prism_cal.topic},
       [&](const std::string& topic, uint64_t /*stamp_ns*/,
           std::span<const std::byte> data) {
+        if (topic == prism_cal.topic) {
+          // Ground truth: independent of the filter, dump every message.
+          const PoseStampedMsg gt = deserialize_pose_stamped(data);
+          gt_out << gt.stamp.to_sec() << ' ' << gt.position.x() << ' '
+                 << gt.position.y() << ' ' << gt.position.z() << " 0 0 0 1\n";
+          ++gt_msgs;
+          return;
+        }
         if (topic == imu_cal.topic) {
           const ImuMeasurement m = deserialize_imu(data);
           imu_buffer.push(m);
@@ -143,7 +175,8 @@ int main() {
         if (ekf) drain();
       });
 
-  spdlog::info("Done. Processed {} scans, final map {} points.", scans,
-               ekf ? ekf->map().size() : 0u);
+  spdlog::info(
+      "Done. Processed {} scans, final map {} points, {} GT poses written.",
+      scans, ekf ? ekf->map().size() : 0u, gt_msgs);
   return 0;
 }

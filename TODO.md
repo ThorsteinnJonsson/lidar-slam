@@ -268,9 +268,16 @@ comparison (Phase 7).
 - [x] Pose trajectory output (TUM format) — `main.cpp` writes `trajectory.tum`
       (`t tx ty tz qx qy qz qw`), one line per processed scan.
 - [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics) — the dataset
-      ground truth is the Leica prism (`leica_prism.yaml` / the bag's pose
-      topic), which is position-only and in its own frame, so align (umeyama /
-      `evo`-style) before computing ATE/RTE. Compare `trajectory.tum` against it.
+      ground truth is the Leica prism (`leica_prism.yaml` / `/leica/pose/relative`),
+      position-only and in its own frame, so align (umeyama / `evo`) before
+      computing ATE/RTE.
+  - [x] Plumbing: PoseStamped deserializer + prism cal loader; `main` writes
+        `evaluation/{trajectory,prism,gt}.tum`. `prism.tum` applies the prism
+        lever arm (`p + R * t_imu_prism`) so the comparison is prism-to-prism;
+        all at 9-decimal precision. Verified: 2990 GT poses extracted.
+  - [ ] Run metrics with evo (`pip install evo`):
+        `evo_ape tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part`
+        and `evo_rpe ... --delta 1 --delta_unit m`. Then read ATE/RTE.
   - [ ] Investigate: the filter stops converging around scan ~400 on `eee_03`
         (hits the `max_iterations=5` cap without reaching `convergence_tol`).
         This coincides with motion onset (scans 100-300 are static and converge
