@@ -4,10 +4,8 @@
 
 bool box_needs_slide(const Eigen::Vector3f& center, const Eigen::Vector3f& lo,
                      const Eigen::Vector3f& hi, float margin) {
-  for (int a = 0; a < 3; ++a) {
-    if (center[a] - lo[a] < margin || hi[a] - center[a] < margin) return true;
-  }
-  return false;
+  // Per axis, the distance to the nearer face; slide if any is within margin.
+  return ((center - lo).cwiseMin(hi - center).array() < margin).any();
 }
 
 void crop_to_box(IkdTree& tree, const Eigen::Vector3f& lo,
