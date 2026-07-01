@@ -76,6 +76,8 @@ int main() {
   std::optional<IteratedEkf> ekf;
   uint64_t last_ref = 0;  // scan-end of the previously processed scan
   size_t scans = 0;
+  size_t converged_scans = 0;  // scans whose iEKF hit convergence_tol
+  size_t total_iters = 0;      // iEKF iterations summed over all scans
   size_t gt_msgs = 0;
 
   // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
@@ -109,6 +111,8 @@ int main() {
       const EkfResult r = ekf->process_scan(imu_window, to_points(filtered));
       last_ref = t_end;
       ++scans;
+      converged_scans += r.converged ? 1 : 0;
+      total_iters += static_cast<size_t>(r.iterations);
 
       const Eigen::Vector3d& p = ekf->state().p;
       const Eigen::Quaterniond q = ekf->state().R.unit_quaternion();
@@ -178,5 +182,13 @@ int main() {
   spdlog::info(
       "Done. Processed {} scans, final map {} points, {} GT poses written.",
       scans, ekf ? ekf->map().size() : 0u, gt_msgs);
+  if (scans > 0) {
+    spdlog::info(
+        "iEKF: {}/{} scans converged ({:.1f}%), mean {:.2f} iters/scan.",
+        converged_scans, scans,
+        100.0 * static_cast<double>(converged_scans) /
+            static_cast<double>(scans),
+        static_cast<double>(total_iters) / static_cast<double>(scans));
+  }
   return 0;
 }
