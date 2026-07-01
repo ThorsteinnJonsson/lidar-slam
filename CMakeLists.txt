@@ -38,10 +38,18 @@ add_executable(lidar_slam
     src/estimator/iekf.cpp
     src/estimator/outlier.cpp
     src/estimator/iterated_ekf.cpp
+    src/viz/visualizer.cpp
 )
 
 target_include_directories(lidar_slam PRIVATE src)
 target_include_directories(lidar_slam SYSTEM PRIVATE ${eigen_SOURCE_DIR} ${sophus_SOURCE_DIR})
+
+# Rerun visualization is opt-in; the visualizer wrapper compiles to no-ops when
+# the SDK is not linked.
+if(LIDAR_SLAM_ENABLE_RERUN)
+    target_link_libraries(lidar_slam PRIVATE rerun_sdk)
+    target_compile_definitions(lidar_slam PRIVATE LIDAR_SLAM_ENABLE_RERUN)
+endif()
 
 target_compile_options(lidar_slam PRIVATE
     -Wall

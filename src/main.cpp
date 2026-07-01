@@ -20,6 +20,7 @@
 #include "preprocess/deskew.h"
 #include "preprocess/voxel_grid.h"
 #include "types.h"
+#include "viz/visualizer.h"
 
 namespace {
 
@@ -91,6 +92,10 @@ int main() {
   for (std::ofstream* os : {&traj_out, &prism_out, &gt_out})
     *os << std::fixed << std::setprecision(9);
 
+  // Live visualization stream (no-op unless built with
+  // LIDAR_SLAM_ENABLE_RERUN).
+  Visualizer viz;
+
   // Process every pending scan whose IMU window [last_ref, t_end] is buffered.
   const auto drain = [&] {
     while (!pending.empty()) {
@@ -108,7 +113,8 @@ int main() {
       const PointCloud filtered = voxel_downsample(undist, kVoxelLeaf);
 
       const auto imu_window = imu_buffer.get_between(last_ref, t_end);
-      const EkfResult r = ekf->process_scan(imu_window, to_points(filtered));
+      const std::vector<Eigen::Vector3f> scan_lidar = to_points(filtered);
+      const EkfResult r = ekf->process_scan(imu_window, scan_lidar);
       last_ref = t_end;
       ++scans;
       converged_scans += r.converged ? 1 : 0;
@@ -133,6 +139,22 @@ int main() {
             scans, p.x(), p.y(), p.z(), ekf->map().size(), r.iterations,
             r.converged ? "conv" : "");
       }
+
+      // Live visualization (no-op unless built with Rerun). Transform the scan
+      // to world with the post-update pose; log the full map periodically since
+      // it is large.
+      const Sophus::SE3d T_wi(ekf->state().R, ekf->state().p);
+      const Sophus::SE3d T_wl = T_wi * T_imu_lidar;
+      std::vector<Eigen::Vector3f> scan_world;
+      scan_world.reserve(scan_lidar.size());
+      for (const Eigen::Vector3f& p_l : scan_lidar) {
+        scan_world.push_back((T_wl * p_l.cast<double>()).cast<float>());
+      }
+      viz.set_scan(static_cast<int64_t>(scans));
+      viz.log_scan(scan_world);
+      viz.log_pose(T_wi);
+      if (scans % 50 == 0) viz.log_map(ekf->map());
+
       pending.pop_front();
     }
   };
@@ -178,6 +200,12 @@ int main() {
         }
         if (ekf) drain();
       });
+
+  // Final full map at the last scan index.
+  if (ekf) {
+    viz.set_scan(static_cast<int64_t>(scans));
+    viz.log_map(ekf->map());
+  }
 
   spdlog::info(
       "Done. Processed {} scans, final map {} points, {} GT poses written.",
