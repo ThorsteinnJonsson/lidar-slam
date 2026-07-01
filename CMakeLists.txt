@@ -10,9 +10,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # the dependencies' own test suites (Eigen registers 900+ tests off it).
 option(LIDAR_SLAM_BUILD_TESTS "Build the unit tests" ON)
 
-# Use libc++ globally so all dependencies share the same ABI
-add_compile_options(-stdlib=libc++)
-add_link_options(-stdlib=libc++ -lc++abi)
+# Off by default: pulls in the Rerun C++ SDK (and builds Arrow from source the
+# first time), which normal and CI builds have no need for.
+option(LIDAR_SLAM_ENABLE_RERUN "Build with Rerun visualization support" OFF)
+
+# libc++ and the compiler are selected by cmake/toolchain-clang-libcxx.cmake
+# (referenced from CMakePresets.json) so the stdlib choice reaches sub-builds
+# such as Rerun's Arrow ExternalProject.
 
 include(cmake/dependencies.cmake)
 
