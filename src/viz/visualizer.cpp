@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <rerun.hpp>
 
 struct Visualizer::Impl {
@@ -35,6 +37,30 @@ std::vector<rerun::Position3D> to_positions(
   return out;
 }
 
+// Map a normalized value t in [0, 1] to an RGB color by sweeping hue from blue
+// (low) through green to red (high), with saturation and value pinned to 1.
+rerun::Color hue_color(float t) {
+  // Blue (hue sextant 4) at t=0 down to red (sextant 0) at t=1.
+  const float h = (1.0f - std::clamp(t, 0.0f, 1.0f)) * 4.0f;
+  const float x = 1.0f - std::abs(std::fmod(h, 2.0f) - 1.0f);
+  float r = 0.0f, g = 0.0f, b = 0.0f;
+  if (h < 1.0f) {
+    r = 1.0f, g = x;
+  } else if (h < 2.0f) {
+    r = x, g = 1.0f;
+  } else if (h < 3.0f) {
+    g = 1.0f, b = x;
+  } else if (h < 4.0f) {
+    g = x, b = 1.0f;
+  } else if (h < 5.0f) {
+    r = x, b = 1.0f;
+  } else {
+    r = 1.0f, b = x;
+  }
+  const auto to8 = [](float c) { return static_cast<uint8_t>(c * 255.0f); };
+  return rerun::Color(to8(r), to8(g), to8(b));
+}
+
 }  // namespace
 
 Visualizer::Visualizer(const std::string& app_id)
@@ -49,7 +75,7 @@ void Visualizer::log_scan(const std::vector<Eigen::Vector3f>& points_world) {
   if (!impl_->ok) return;
   impl_->rec.log("world/scan", rerun::Points3D(to_positions(points_world))
                                    .with_colors(rerun::Color(0xff, 0x50, 0x50))
-                                   .with_radii(0.05f));
+                                   .with_radii(0.10f));
 }
 
 void Visualizer::log_pose(const Sophus::SE3d& T_world_imu) {
@@ -65,9 +91,25 @@ void Visualizer::log_pose(const Sophus::SE3d& T_world_imu) {
 
 void Visualizer::log_map(const IkdTree& map) {
   if (!impl_->ok) return;
-  impl_->rec.log("world/map", rerun::Points3D(to_positions(map.collect()))
-                                  .with_colors(rerun::Color(0xa0, 0xa0, 0xa0))
-                                  .with_radii(0.02f));
+  const std::vector<Eigen::Vector3f> pts = map.collect();
+
+  // Color by height over the map's current z-range.
+  float z_min = std::numeric_limits<float>::max();
+  float z_max = std::numeric_limits<float>::lowest();
+  for (const Eigen::Vector3f& p : pts) {
+    z_min = std::min(z_min, p.z());
+    z_max = std::max(z_max, p.z());
+  }
+  const float z_span = z_max > z_min ? z_max - z_min : 1.0f;
+
+  std::vector<rerun::Color> colors;
+  colors.reserve(pts.size());
+  for (const Eigen::Vector3f& p : pts)
+    colors.push_back(hue_color((p.z() - z_min) / z_span));
+
+  impl_->rec.log(
+      "world/map",
+      rerun::Points3D(to_positions(pts)).with_colors(colors).with_radii(0.02f));
 }
 
 #else  // LIDAR_SLAM_ENABLE_RERUN not defined: no-op build
