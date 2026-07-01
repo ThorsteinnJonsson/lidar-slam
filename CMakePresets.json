@@ -20,6 +20,17 @@
       }
     },
     {
+      "name": "release-rerun",
+      "displayName": "Release + Rerun",
+      "inherits": "release",
+      "cacheVariables": {
+        "LIDAR_SLAM_ENABLE_RERUN": "ON"
+      },
+      "environment": {
+        "GIT_CEILING_DIRECTORIES": "${sourceDir}/build"
+      }
+    },
+    {
       "name": "debug",
       "displayName": "Debug",
       "inherits": "base",
@@ -40,6 +51,13 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "release-rerun",
+      "configurePreset": "release-rerun",
+      "environment": {
+        "GIT_CEILING_DIRECTORIES": "${sourceDir}/build"
+      }
     },
     {
       "name": "debug",
