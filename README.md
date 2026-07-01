@@ -79,23 +79,30 @@ cmake --build --preset release-rerun
 The first build compiles Arrow from source (a few minutes); it is cached
 afterward. Normal `debug`/`release` builds do not pull in Rerun.
 
-The SDK (linked into the binary) and the viewer (a separate GUI app) must be the
-**same version** (0.33.1). CMake fetches the SDK; install the viewer yourself
-into a virtualenv:
+CMake fetches the SDK (linked into the binary). The **viewer** is a separate GUI
+app you install yourself, and it must be the **same version** as the SDK
+(0.33.1). Grab the prebuilt binary and drop it somewhere on `PATH`:
 
 ```bash
-python3 -m venv ~/.venvs/rerun
-~/.venvs/rerun/bin/pip install rerun-sdk==0.33.1
+curl -fL -o ~/.cargo/bin/rerun \
+  https://github.com/rerun-io/rerun/releases/download/0.33.1/rerun-cli-0.33.1-x86_64-unknown-linux-gnu
+chmod +x ~/.cargo/bin/rerun
+rerun --version   # expect 0.33.1
 ```
 
-At run time the app calls `spawn()`, which launches the viewer automatically, so
-the `rerun` binary must be on `PATH` (activate the venv, or add
-`~/.venvs/rerun/bin` to `PATH`) before running:
+Alternatives: `cargo install rerun-cli --version 0.33.1 --locked` (compiles from
+source), or `pipx install rerun-sdk==0.33.1`.
+
+At run time the app calls `spawn()`, which launches the viewer automatically as
+long as `rerun` is on `PATH`:
 
 ```bash
-source ~/.venvs/rerun/bin/activate.fish   # or activate for your shell
 ./build/release-rerun/lidar_slam
 ```
+
+If the viewer is not found, `spawn()` logs a warning and the run continues with
+visualization disabled. When the pinned SDK version changes, update the viewer to
+match or it will refuse to connect.
 
 ## Tests
 
