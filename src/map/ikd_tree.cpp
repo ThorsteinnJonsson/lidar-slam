@@ -289,6 +289,13 @@ size_t IkdTree::physical_size() const noexcept {
   return root_ ? static_cast<size_t>(root_->treesize) : 0;
 }
 
+std::vector<Eigen::Vector3f> IkdTree::collect() const {
+  std::vector<Eigen::Vector3f> out;
+  out.reserve(size());
+  flatten(root_.get(), out);
+  return out;
+}
+
 int IkdTree::height() const noexcept { return node_height(root_.get()); }
 
 bool IkdTree::check(const Node* n, int& out_size, int& out_invalid,

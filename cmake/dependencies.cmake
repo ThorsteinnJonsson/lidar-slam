@@ -74,3 +74,13 @@ target_include_directories(nanoflann_iface INTERFACE ${nanoflann_SOURCE_DIR}/inc
 # lz4 for ROS bag decompression
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LZ4 REQUIRED liblz4)
+
+# Rerun C++ SDK for visualization (opt-in). Builds Arrow from source; the libc++
+# toolchain file (CMakePresets) propagates in so Arrow links against libc++.
+if(LIDAR_SLAM_ENABLE_RERUN)
+    FetchContent_Declare(
+        rerun_sdk
+        URL https://github.com/rerun-io/rerun/releases/download/0.33.1/rerun_cpp_sdk.zip
+    )
+    FetchContent_MakeAvailable(rerun_sdk)
+endif()

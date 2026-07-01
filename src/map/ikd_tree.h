@@ -43,6 +43,10 @@ class IkdTree {
            std::vector<Eigen::Vector3f>& out_points,
            std::vector<float>& out_dist2) const;
 
+  // All live (non-deleted) points, in unspecified order. O(n) and allocates;
+  // intended for visualization and diagnostics, not the hot path.
+  std::vector<Eigen::Vector3f> collect() const;
+
   // Number of live points in the tree (excludes lazily-deleted points still
   // physically present pending a rebuild).
   size_t size() const noexcept;

@@ -65,6 +65,45 @@ evo_rpe tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part \
 
 Add `--plot` for the trajectory overlay and error-over-time plots.
 
+## Visualization
+
+Live 3D visualization (map, registered scans, trajectory) uses the
+[Rerun](https://rerun.io) C++ SDK. It is opt-in: configure with the
+`release-rerun` preset, which sets `LIDAR_SLAM_ENABLE_RERUN=ON`.
+
+```bash
+cmake --preset release-rerun
+cmake --build --preset release-rerun
+```
+
+The first build compiles Arrow from source (a few minutes); it is cached
+afterward. Normal `debug`/`release` builds do not pull in Rerun.
+
+CMake fetches the SDK (linked into the binary). The **viewer** is a separate GUI
+app you install yourself, and it must be the **same version** as the SDK
+(0.33.1). Grab the prebuilt binary and drop it somewhere on `PATH`:
+
+```bash
+curl -fL -o ~/.cargo/bin/rerun \
+  https://github.com/rerun-io/rerun/releases/download/0.33.1/rerun-cli-0.33.1-x86_64-unknown-linux-gnu
+chmod +x ~/.cargo/bin/rerun
+rerun --version   # expect 0.33.1
+```
+
+Alternatives: `cargo install rerun-cli --version 0.33.1 --locked` (compiles from
+source), or `pipx install rerun-sdk==0.33.1`.
+
+At run time the app calls `spawn()`, which launches the viewer automatically as
+long as `rerun` is on `PATH`:
+
+```bash
+./build/release-rerun/lidar_slam
+```
+
+If the viewer is not found, `spawn()` logs a warning and the run continues with
+visualization disabled. When the pinned SDK version changes, update the viewer to
+match or it will refuse to connect.
+
 ## Tests
 
 Tests use GoogleTest and are built by default (disable with
