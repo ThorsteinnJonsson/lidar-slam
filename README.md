@@ -65,6 +65,38 @@ evo_rpe tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part \
 
 Add `--plot` for the trajectory overlay and error-over-time plots.
 
+## Visualization
+
+Live 3D visualization (map, registered scans, trajectory) uses the
+[Rerun](https://rerun.io) C++ SDK. It is opt-in: configure with the
+`release-rerun` preset, which sets `LIDAR_SLAM_ENABLE_RERUN=ON`.
+
+```bash
+cmake --preset release-rerun
+cmake --build --preset release-rerun
+```
+
+The first build compiles Arrow from source (a few minutes); it is cached
+afterward. Normal `debug`/`release` builds do not pull in Rerun.
+
+The SDK (linked into the binary) and the viewer (a separate GUI app) must be the
+**same version** (0.33.1). CMake fetches the SDK; install the viewer yourself
+into a virtualenv:
+
+```bash
+python3 -m venv ~/.venvs/rerun
+~/.venvs/rerun/bin/pip install rerun-sdk==0.33.1
+```
+
+At run time the app calls `spawn()`, which launches the viewer automatically, so
+the `rerun` binary must be on `PATH` (activate the venv, or add
+`~/.venvs/rerun/bin` to `PATH`) before running:
+
+```bash
+source ~/.venvs/rerun/bin/activate.fish   # or activate for your shell
+./build/release-rerun/lidar_slam
+```
+
 ## Tests
 
 Tests use GoogleTest and are built by default (disable with
