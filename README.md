@@ -33,6 +33,38 @@ switching between them doesn't require a clean.
 Expects the NTU VIRAL dataset under `datasets/ntu_viral/eee_03` (calibration YAMLs
 plus `eee_03.bag`).
 
+## Evaluation
+
+Each run writes three [TUM-format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
+trajectories (`timestamp tx ty tz qx qy qz qw`) into `evaluation/`:
+
+| File             | Contents                                                                       |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `trajectory.tum` | estimated IMU pose in the SLAM world frame                                     |
+| `prism.tum`      | estimate at the Leica prism (lever arm applied), for prism-to-prism comparison |
+| `gt.tum`         | Leica prism ground truth from `/leica/pose/relative` (position only)           |
+
+Metrics are computed offline with [evo](https://github.com/MichaelGrupp/evo).
+The ground truth is position-only and in its own frame, so align before comparing
+(`--align`, SE(3) Umeyama) and restrict the error to translation (`-r trans_part`).
+Install once into a virtualenv:
+
+```bash
+python3 -m venv ~/.venvs/evo   # needs python3-venv for ensurepip
+~/.venvs/evo/bin/pip install evo
+source ~/.venvs/evo/bin/activate.fish # Or equivalent for bash
+```
+
+Absolute trajectory error (ATE) and relative pose error (RPE / drift):
+
+```bash
+evo_ape tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part
+evo_rpe tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part \
+        --delta 1 --delta_unit m
+```
+
+Add `--plot` for the trajectory overlay and error-over-time plots.
+
 ## Tests
 
 Tests use GoogleTest and are built by default (disable with

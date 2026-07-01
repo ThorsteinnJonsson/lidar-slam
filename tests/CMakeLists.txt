@@ -11,6 +11,8 @@ add_executable(unit_tests
     initializer_test.cpp
     map_crop_test.cpp
     local_map_test.cpp
+    ros_deserializer_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/ros_deserializer.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
     ${CMAKE_SOURCE_DIR}/src/map/local_map.cpp

@@ -21,8 +21,16 @@ struct LidarCalibration {
   int horz_res{0};
 };
 
+// Leica prism ground-truth config: the GT topic and the prism's mounting
+// offset from the body frame (used for the lever-arm correction at evaluation).
+struct PrismCalibration {
+  std::string topic;
+  Eigen::Isometry3d T_body_prism{Eigen::Isometry3d::Identity()};
+};
+
 ImuCalibration load_imu_calibration(const std::filesystem::path& path);
 LidarCalibration load_lidar_calibration(const std::filesystem::path& path);
+PrismCalibration load_prism_calibration(const std::filesystem::path& path);
 
 // Transform mapping points from the lidar frame into the IMU frame:
 //   T_imu_lidar = T_body_imu⁻¹ · T_body_lidar

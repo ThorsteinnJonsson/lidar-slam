@@ -45,7 +45,7 @@ void crop_to_box(IkdTree& tree, const Eigen::Vector3f& lo,
 struct LocalMapParams {
   MapCropParams crop;
   bool voxel_on_insert{true};
-  float voxel_leaf{0.5f};  // map resolution (m); match the per-scan leaf
+  float voxel_leaf{0.1f};  // map resolution (m); match the per-scan leaf
 };
 
 class LocalMap {
