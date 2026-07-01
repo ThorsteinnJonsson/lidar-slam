@@ -88,6 +88,30 @@ void expect_dist2_match(const std::vector<float>& got,
   }
 }
 
+// Sort points into a canonical order so two point sets can be compared
+// regardless of tree traversal order.
+std::vector<Vec3> canonical(std::vector<Vec3> v) {
+  std::sort(v.begin(), v.end(), [](const Vec3& a, const Vec3& b) {
+    if (a.x() != b.x()) return a.x() < b.x();
+    if (a.y() != b.y()) return a.y() < b.y();
+    return a.z() < b.z();
+  });
+  return v;
+}
+
+// The two clouds hold the same points (order-independent). collect() returns
+// the stored points verbatim, so equality is exact.
+void expect_same_cloud(std::vector<Vec3> got, std::vector<Vec3> expected) {
+  ASSERT_EQ(got.size(), expected.size());
+  got = canonical(std::move(got));
+  expected = canonical(std::move(expected));
+  for (size_t i = 0; i < got.size(); ++i) {
+    EXPECT_FLOAT_EQ(got[i].x(), expected[i].x()) << "at " << i;
+    EXPECT_FLOAT_EQ(got[i].y(), expected[i].y()) << "at " << i;
+    EXPECT_FLOAT_EQ(got[i].z(), expected[i].z()) << "at " << i;
+  }
+}
+
 }  // namespace
 
 TEST(IkdTree, EmptyTree) {
@@ -467,4 +491,28 @@ TEST(IkdTree, CollinearPoints) {
   std::vector<float> got_d2;
   tree.knn(Vec3(10.4f, 0, 0), 3, got_pts, got_d2);
   expect_dist2_match(got_d2, brute_force_dist2(pts, Vec3(10.4f, 0, 0), 3));
+}
+
+TEST(IkdTree, CollectEmptyTree) {
+  IkdTree tree;
+  tree.build({});
+  EXPECT_TRUE(tree.collect().empty());
+}
+
+TEST(IkdTree, CollectReturnsAllLivePoints) {
+  const auto pts = random_cloud(500, /*seed=*/7);
+  IkdTree tree;
+  tree.build(pts);
+  EXPECT_EQ(tree.collect().size(), tree.size());
+  expect_same_cloud(tree.collect(), pts);
+}
+
+TEST(IkdTree, CollectExcludesBoxDeletedPoints) {
+  const auto pts = random_cloud(800, /*seed=*/9);
+  IkdTree tree;
+  tree.build(pts);
+  const Vec3 lo(-20, -20, -20), hi(20, 20, 20);
+  tree.remove_box(lo, hi);
+  // collect() must honor lazy deletion: only points outside the box remain.
+  expect_same_cloud(tree.collect(), outside_box(pts, lo, hi));
 }
