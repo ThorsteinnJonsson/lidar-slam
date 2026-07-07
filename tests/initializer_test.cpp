@@ -100,7 +100,7 @@ TEST(Initializer, CovarianceSeedStructure) {
 
   // Symmetric, PSD diagonal, every entry positive.
   EXPECT_LT((r.cov - r.cov.transpose()).norm(), 1e-12);
-  for (int i = 0; i < 18; ++i) EXPECT_GT(r.cov(i, i), 0.0);
+  for (int i = 0; i < 17; ++i) EXPECT_GT(r.cov(i, i), 0.0);
 
   // Accel bias is the one loose block: its variance dwarfs attitude/position.
   const double ba_var = r.cov(12, 12);

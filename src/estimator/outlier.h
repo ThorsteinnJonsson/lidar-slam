@@ -20,5 +20,5 @@
 // Returns the surviving rows of `m` as a new LinearizedMeasurement; the input
 // is unchanged. An empty result is valid.
 LinearizedMeasurement gate_measurement(const LinearizedMeasurement& m,
-                                       const Eigen::Matrix<double, 18, 18>& P,
+                                       const Eigen::Matrix<double, 17, 17>& P,
                                        double sigma, double chi2_thresh);

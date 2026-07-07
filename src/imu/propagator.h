@@ -24,10 +24,10 @@ class ImuPropagator {
   State propagate(const State& s0, const ImuMeasurement& m0,
                   const ImuMeasurement& m1) const;
 
-  // Propagate state and error-state covariance (18×18).
+  // Propagate state and error-state covariance (17×17).
   // Uses a first-order discrete-time Jacobian and continuous-time noise model.
-  std::pair<State, Eigen::Matrix<double, 18, 18>> propagate_with_covariance(
-      const State& s0, const Eigen::Matrix<double, 18, 18>& P,
+  std::pair<State, Eigen::Matrix<double, 17, 17>> propagate_with_covariance(
+      const State& s0, const Eigen::Matrix<double, 17, 17>& P,
       const ImuMeasurement& m0, const ImuMeasurement& m1) const;
 
  private:

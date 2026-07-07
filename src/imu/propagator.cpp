@@ -43,12 +43,12 @@ State ImuPropagator::propagate(const State& s0, const ImuMeasurement& m0,
 // ────────────────────────────────────────────────────
 
 // Error-state ordering: [δθ (0-2), δp (3-5), δv (6-8), δb_g (9-11), δb_a
-// (12-14), δg (15-17)]
+// (12-14), δg (15-16)]. δg is 2-DOF: gravity tilts on S² (see imu/s2.h).
 //
-// Continuous-time Jacobian F_c (18×18):
+// Continuous-time Jacobian F_c (17×17):
 //   δθ̇  = -[ω̂]× δθ  - δb_g
 //   δṗ  =  δv
-//   δv̇  = -R[â]× δθ  - R δb_a + δg
+//   δv̇  = -R[â]× δθ  - R δb_a - [g]× B δg   (B = S² tangent basis at g)
 //   δḃ_g = 0
 //   δḃ_a = 0
 //   δġ   = 0
@@ -61,9 +61,9 @@ State ImuPropagator::propagate(const State& s0, const ImuMeasurement& m0,
 //   G_c row δb_a: [ 0,  0, 0, I]
 //   G_c row δg:   [ 0,  0, 0, 0]
 
-std::pair<State, Eigen::Matrix<double, 18, 18>>
+std::pair<State, Eigen::Matrix<double, 17, 17>>
 ImuPropagator::propagate_with_covariance(const State& s0,
-                                         const Eigen::Matrix<double, 18, 18>& P,
+                                         const Eigen::Matrix<double, 17, 17>& P,
                                          const ImuMeasurement& m0,
                                          const ImuMeasurement& m1) const {
   const double dt =
@@ -92,7 +92,7 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   const Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
   const Eigen::Matrix3d R_mat = s0.R.matrix();
 
-  Eigen::Matrix<double, 18, 18> Fc = Eigen::Matrix<double, 18, 18>::Zero();
+  Eigen::Matrix<double, 17, 17> Fc = Eigen::Matrix<double, 17, 17>::Zero();
 
   // δθ row
   Fc.block<3, 3>(0, 0) = -skew(w_mid);  // -[ω̂]×
@@ -104,11 +104,13 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   // δv row
   Fc.block<3, 3>(6, 0) = -R_mat * skew(a_mid);  // -R[â]×
   Fc.block<3, 3>(6, 12) = -R_mat;               // -R δb_a
-  Fc.block<3, 3>(6, 15) = I3;                   // +δg
+  // ∂(a_world)/∂δg for the 2-DOF S² tilt: a rotation Exp(B·δg) moves g by
+  // -[g]× B·δg, so the δv column is -[g]× B (3×2).
+  Fc.block<3, 2>(6, 15) = -skew(s0.gravity) * s2_tangent_basis(s0.gravity);
 
   // ── Discrete Jacobian: F_d ≈ I + F_c·dt (first-order) ────────────────────
-  const Eigen::Matrix<double, 18, 18> Fd =
-      Eigen::Matrix<double, 18, 18>::Identity() + Fc * dt;
+  const Eigen::Matrix<double, 17, 17> Fd =
+      Eigen::Matrix<double, 17, 17>::Identity() + Fc * dt;
 
   // ── Build additive noise covariance Q_d = G_c·Q_c·G_c^T·dt ──────────────
   // G_c·Q_c·G_c^T is block-diagonal with blocks:
@@ -123,14 +125,14 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   const double sbg2 = noise_.gyro_rw_std * noise_.gyro_rw_std;
   const double sba2 = noise_.accel_rw_std * noise_.accel_rw_std;
 
-  Eigen::Matrix<double, 18, 18> Qd = Eigen::Matrix<double, 18, 18>::Zero();
+  Eigen::Matrix<double, 17, 17> Qd = Eigen::Matrix<double, 17, 17>::Zero();
   Qd.block<3, 3>(0, 0) = sg2 * dt * I3;
   Qd.block<3, 3>(6, 6) = sa2 * dt * I3;
   Qd.block<3, 3>(9, 9) = sbg2 * dt * I3;
   Qd.block<3, 3>(12, 12) = sba2 * dt * I3;
 
   // ── Propagate covariance ───────────────────────────────────────────────────
-  const Eigen::Matrix<double, 18, 18> P1 = Fd * P * Fd.transpose() + Qd;
+  const Eigen::Matrix<double, 17, 17> P1 = Fd * P * Fd.transpose() + Qd;
 
   return {s1, P1};
 }

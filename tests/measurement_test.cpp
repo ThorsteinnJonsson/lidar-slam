@@ -64,8 +64,8 @@ TEST(Measurement, JacobianMatchesFiniteDifference) {
     const double d = static_cast<double>(matches[i].residual) -
                      residual_at(s, matches[i], 0.0);
 
-    for (int j = 0; j < 18; ++j) {
-      Vector18 delta = Vector18::Zero();
+    for (int j = 0; j < 17; ++j) {
+      Vector17 delta = Vector17::Zero();
       delta(j) = eps;
       const double r_plus = residual_at(boxplus(s, delta), matches[i], d);
       const double r_minus = residual_at(boxplus(s, -delta), matches[i], d);
@@ -80,8 +80,8 @@ TEST(Measurement, OnlyRotationAndPositionBlocksAreNonzero) {
   const State s = sample_state();
   const auto lin = build_measurement(s, sample_matches());
 
-  // Columns 6..17 (velocity, biases, gravity) carry no information.
-  EXPECT_TRUE(lin.H.rightCols<12>().isZero(0.0));
+  // Columns 6..16 (velocity, biases, gravity) carry no information.
+  EXPECT_TRUE(lin.H.rightCols<11>().isZero(0.0));
   // Rotation and position blocks are not all zero.
   EXPECT_GT(lin.H.leftCols<6>().cwiseAbs().sum(), 0.0);
 }
@@ -100,6 +100,6 @@ TEST(Measurement, EmptyMatchesYieldEmptySystem) {
   const auto lin = build_measurement(s, {});
 
   EXPECT_EQ(lin.H.rows(), 0);
-  EXPECT_EQ(lin.H.cols(), 18);
+  EXPECT_EQ(lin.H.cols(), 17);
   EXPECT_EQ(lin.z.size(), 0);
 }
