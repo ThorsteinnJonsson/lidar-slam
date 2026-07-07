@@ -23,6 +23,10 @@ struct EkfResult {
   int iterations = 0;  // iterations actually run
   bool converged =
       false;  // true if the loop hit convergence_tol before the cap
+  // Diagnostic: total attitude correction the update applied to the propagated
+  // prior, log(x_hat.R^-1 * x.R) in degrees. Large sustained values mean the
+  // map is fighting the prediction (drift being induced or corrected).
+  double update_dtheta_deg = 0.0;
 };
 
 // Builds the linearized measurement (H, z) about a given state. Supplied by the

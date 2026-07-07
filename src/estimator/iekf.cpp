@@ -1,6 +1,7 @@
 #include "estimator/iekf.h"
 
 #include <Eigen/Dense>
+#include <numbers>
 
 #include "estimator/outlier.h"
 
@@ -52,6 +53,9 @@ EkfResult iterated_update(const State& x_hat,
   result.iterations = iters;
   // An empty system leaves the prior untouched, which counts as trivially done.
   result.converged = converged || !have_gain;
+  // Diagnostic: how far the update rotated the state off the propagated prior.
+  constexpr double kRadToDeg = 180.0 / std::numbers::pi;
+  result.update_dtheta_deg = (x_hat.R.inverse() * x.R).log().norm() * kRadToDeg;
   if (have_gain) {
     const Matrix18 KH = K * H;
     const Matrix18 P_upd = (I18 - KH) * P;

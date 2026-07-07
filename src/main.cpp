@@ -1,10 +1,12 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <numbers>
 #include <optional>
 #include <vector>
 
@@ -138,6 +140,22 @@ int main() {
             "iters {} {}",
             scans, p.x(), p.y(), p.z(), ekf->map().size(), r.iterations,
             r.converged ? "conv" : "");
+      }
+
+      // Drift diagnostics (temporary): if the free-gravity state is absorbing
+      // accel-bias error, its direction walks off vertical while b_a stays near
+      // zero. gtilt is the angle of the gravity estimate off its initial -Z;
+      // dtheta is how hard this scan's update rotated the state.
+      if (scans % 50 == 0) {
+        const Eigen::Vector3d& g = ekf->state().gravity;
+        const double gtilt_deg =
+            std::acos(std::clamp(-g.normalized().z(), -1.0, 1.0)) * 180.0 /
+            std::numbers::pi;
+        spdlog::info(
+            "  diag scan {:5} | gtilt {:5.2f} deg | |b_a| {:.4f} | |b_g| "
+            "{:.4f} | dtheta {:.3f} deg",
+            scans, gtilt_deg, ekf->state().b_a.norm(), ekf->state().b_g.norm(),
+            r.update_dtheta_deg);
       }
 
       // Live visualization (no-op unless built with Rerun). Transform the scan
