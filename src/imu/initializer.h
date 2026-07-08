@@ -36,7 +36,13 @@ struct InitParams {
   double pos_std{1e-3};     // position       (origin by definition)
   double vel_std{1e-2};     // velocity       (at rest)
   double bias_gyro_std{1e-3};
-  double bias_accel_std{0.1};  // loose: learned under motion
+  // Tight seed. Accel bias is unobservable at rest, so a loose prior lets the
+  // filter dump the motion-onset registration inconsistency into b_a (it blew
+  // up to ~1.5 m/s^2 with a 0.1 seed), which then tilts gravity. Pinning b_a
+  // near its known-small init keeps the onset transient physical; the bias is
+  // still learned under motion. 0.01 minimizes the onset gravity tilt without
+  // starving the real (small, nonzero) bias.
+  double bias_accel_std{0.01};
   double gravity_std{1e-2};
 };
 
