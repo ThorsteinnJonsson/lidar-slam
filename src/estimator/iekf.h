@@ -27,6 +27,20 @@ struct EkfResult {
   // prior, log(x_hat.R^-1 * x.R) in degrees. Large sustained values mean the
   // map is fighting the prediction (drift being induced or corrected).
   double update_dtheta_deg = 0.0;
+
+  // Registration diagnostics (temp): correspondences at the final iterate, to
+  // tell a sparse-map registration failure (few matches / large residuals) from
+  // a bias observability transient. Filled by IteratedEkf::process_scan.
+  int num_matches = 0;      // accepted point-to-plane correspondences
+  int num_scan_points = 0;  // scan points offered to association
+  double median_abs_residual =
+      0.0;  // median |point-plane dist| (m) over matches
+  // Motion over the scan's IMU window, to split the onset residual into a
+  // rotation-coupled vs translation-coupled channel: if medres tracks
+  // mean_omega the warp is rotational (extrinsic / gyro deskew), if it tracks
+  // mean_acc it is translational (accel/velocity deskew).
+  double mean_omega = 0.0;  // mean |gyro| over the window (rad/s)
+  double mean_acc = 0.0;    // mean |linear accel|, gravity removed (m/s^2)
 };
 
 // Builds the linearized measurement (H, z) about a given state. Supplied by the

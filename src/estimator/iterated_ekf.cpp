@@ -1,5 +1,8 @@
 #include "estimator/iterated_ekf.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "estimator/measurement.h"
 
 IteratedEkf::IteratedEkf(const NoiseParams& noise,
@@ -36,14 +39,44 @@ EkfResult IteratedEkf::process_scan(
 
   // ── Update: re-associate against the live iterate each iteration
   // ────────────
+  // Keep the last iterate's correspondences for registration diagnostics.
+  std::vector<PlaneMatch> last_matches;
   const MeasurementFn measure = [&](const State& x) {
     const Sophus::SE3f T_WI(x.R.cast<float>(), x.p.cast<float>());
-    return build_measurement(
-        x, associate_planes(map_.tree(), points_imu, T_WI, assoc_));
+    last_matches = associate_planes(map_.tree(), points_imu, T_WI, assoc_);
+    return build_measurement(x, last_matches);
   };
-  const EkfResult result = iterated_update(x_, P_, measure, cfg_);
+  EkfResult result = iterated_update(x_, P_, measure, cfg_);
   x_ = result.state;
   P_ = result.covariance;
+
+  // Registration diagnostics: how many scan points found a nearby plane, and
+  // the median absolute point-to-plane distance at the final iterate.
+  result.num_scan_points = static_cast<int>(points_imu.size());
+  result.num_matches = static_cast<int>(last_matches.size());
+  if (!last_matches.empty()) {
+    std::vector<double> abs_res;
+    abs_res.reserve(last_matches.size());
+    for (const PlaneMatch& m : last_matches)
+      abs_res.push_back(std::abs(static_cast<double>(m.residual)));
+    const size_t mid = abs_res.size() / 2;
+    std::nth_element(abs_res.begin(), abs_res.begin() + mid, abs_res.end());
+    result.median_abs_residual = abs_res[mid];
+  }
+
+  // Mean rotation and (gravity-removed) linear acceleration over the window.
+  // a_world = R * f + g cancels gravity: at rest f = -R^T g so this is ~0.
+  if (!imu.empty()) {
+    double sum_w = 0.0;
+    double sum_a = 0.0;
+    for (const ImuMeasurement& m : imu) {
+      sum_w += m.angular_velocity.norm();
+      sum_a += (x_.R * m.linear_acceleration + x_.gravity).norm();
+    }
+    const double n = static_cast<double>(imu.size());
+    result.mean_omega = sum_w / n;
+    result.mean_acc = sum_a / n;
+  }
 
   // ── Map: fold in the registered scan, then bound to the sliding window
   // ──────
