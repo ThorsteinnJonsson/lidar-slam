@@ -74,10 +74,25 @@ int main() {
   spdlog::info("IMU  topic: {}, LiDAR topic: {}, GT topic: {}", imu_cal.topic,
                lidar_cal.topic, prism_cal.topic);
 
-  const NoiseParams noise{.gyro_noise_std = imu_cal.gyro_noise_std,
-                          .accel_noise_std = imu_cal.accel_noise_std,
-                          .gyro_rw_std = imu_cal.gyro_rw_std,
-                          .accel_rw_std = imu_cal.accel_rw_std};
+  // FAST-LIO2 tuning parity: deliberately LOOSE process noise (gyr_cov/acc_cov
+  // 0.1, b_gyr_cov/b_acc_cov 1e-4, stored as std = sqrt(cov)) instead of the
+  // datasheet values from imu_v100.yaml. The datasheet Q makes the filter
+  // overconfident: the covariance stays so tight that the takeoff registration
+  // misfit gets absorbed as attitude/gravity error and then locks in as a
+  // permanent ~5 deg map tilt. Loose Q lets the bias and attitude keep
+  // re-adapting, so the same transient heals: final gravity tilt 5.2 -> 3.6 deg
+  // and ATE 0.32 -> 0.11 on eee_03.
+  // TODO: bisect which of the loosened terms carries the improvement, and
+  // consider scaling the datasheet values instead of replacing them.
+  const NoiseParams noise{.gyro_noise_std = 0.3162,   // sqrt(0.1)
+                          .accel_noise_std = 0.3162,  // sqrt(0.1)
+                          .gyro_rw_std = 0.01,        // sqrt(1e-4)
+                          .accel_rw_std = 0.01};      // sqrt(1e-4)
+  // Datasheet alternative (kept for the bisect):
+  // const NoiseParams noise{.gyro_noise_std = imu_cal.gyro_noise_std,
+  //                         .accel_noise_std = imu_cal.accel_noise_std,
+  //                         .gyro_rw_std = imu_cal.gyro_rw_std,
+  //                         .accel_rw_std = imu_cal.accel_rw_std};
 
   BagReader reader(dataset + "/eee_03.bag");
 
@@ -268,8 +283,14 @@ int main() {
                     "{:.2e}, gyro_var = {:.2e}, b_g = [{:.2e}, {:.2e}, {:.2e}]",
                     init.accel_mean_norm, init.max_accel_var, init.max_gyro_var,
                     init.state.b_g.x(), init.state.b_g.y(), init.state.b_g.z());
-                ekf.emplace(noise, T_imu_lidar, IekfConfig{},
-                            PlaneAssocParams{}, init.state, init.cov);
+                // FAST-LIO2 tuning parity: lidar point noise sigma =
+                // sqrt(LASER_POINT_COV = 1e-3) ~ 0.0316 m, 10x less information
+                // per point than the 0.01 default. Part of the loose-tuning fix
+                // for the takeoff gravity tilt (see NoiseParams above).
+                IekfConfig ekf_cfg;
+                ekf_cfg.sigma = 0.0316;
+                ekf.emplace(noise, T_imu_lidar, ekf_cfg, PlaneAssocParams{},
+                            init.state, init.cov);
                 last_ref = init_imu.back().stamp.to_nsec();
               } else {
                 // Platform is moving: slide the window and keep waiting for a
