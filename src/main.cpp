@@ -122,7 +122,8 @@ int main() {
       const auto [t_start, t_end] = *window;
       if (!imu_buffer.covers(last_ref, t_end)) break;  // need more IMU
 
-      const auto traj = build_scan_trajectory(imu_buffer, t_start, t_end);
+      const auto traj =
+          build_scan_trajectory(imu_buffer, t_start, t_end, ekf->state());
       const PointCloud undist = deskew(cloud, traj, T_imu_lidar, t_end);
       const PointCloud filtered = voxel_downsample(undist, kVoxelLeaf);
 
