@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "estimator/measurement.h"
 
@@ -28,6 +29,11 @@ EkfResult IteratedEkf::process_scan(
         propagator_.propagate_with_covariance(x_, P_, imu[i], imu[i + 1]);
   }
 
+  // Prior (post-predict, pre-update) uncertainty in the weakly-observed
+  // roll/pitch and gravity directions (temp onset-burst diagnostic).
+  const double prior_att_rp = std::sqrt(P_(0, 0) + P_(1, 1));
+  const double prior_grav = std::sqrt(P_(15, 15) + P_(16, 16));
+
   // Lidar points into the IMU frame once; the extrinsic is fixed, so only the
   // pose changes between iterations.
   std::vector<Eigen::Vector3f> points_imu;
@@ -35,6 +41,29 @@ EkfResult IteratedEkf::process_scan(
   const Sophus::SE3f T_il = T_imu_lidar_.cast<float>();
   for (const Eigen::Vector3f& p_L : points_lidar) {
     points_imu.push_back(T_il * p_L);
+  }
+
+  // Pre-update inconsistency at the propagated prior (temp onset probe): fit
+  // the predicted+deskewed scan to the map before the update moves anything.
+  double prior_medres = 0.0;
+  double prior_vbias = 0.0;
+  {
+    const Sophus::SE3f T_prior(x_.R.cast<float>(), x_.p.cast<float>());
+    const std::vector<PlaneMatch> pm =
+        associate_planes(map_.tree(), points_imu, T_prior, assoc_);
+    if (!pm.empty()) {
+      std::vector<double> ar;
+      ar.reserve(pm.size());
+      double vb = 0.0;
+      for (const PlaneMatch& m : pm) {
+        ar.push_back(std::abs(static_cast<double>(m.residual)));
+        vb += static_cast<double>(m.normal.z() * m.residual);
+      }
+      const size_t mid = ar.size() / 2;
+      std::nth_element(ar.begin(), ar.begin() + mid, ar.end());
+      prior_medres = ar[mid];
+      prior_vbias = vb / static_cast<double>(pm.size());
+    }
   }
 
   // ── Update: re-associate against the live iterate each iteration
@@ -50,6 +79,12 @@ EkfResult IteratedEkf::process_scan(
   x_ = result.state;
   P_ = result.covariance;
 
+  constexpr double kRadToDeg = 180.0 / std::numbers::pi;
+  result.prior_att_rp_std_deg = prior_att_rp * kRadToDeg;
+  result.prior_grav_std_deg = prior_grav * kRadToDeg;
+  result.prior_medres = prior_medres;
+  result.prior_vbias = prior_vbias;
+
   // Registration diagnostics: how many scan points found a nearby plane, and
   // the median absolute point-to-plane distance at the final iterate.
   result.num_scan_points = static_cast<int>(points_imu.size());
@@ -62,6 +97,18 @@ EkfResult IteratedEkf::process_scan(
     const size_t mid = abs_res.size() / 2;
     std::nth_element(abs_res.begin(), abs_res.begin() + mid, abs_res.end());
     result.median_abs_residual = abs_res[mid];
+
+    // Plane population that constrains roll/pitch (temp): near-vertical normals
+    // (ground/ceiling) and the normal-weighted mean residual.
+    int n_vert = 0;
+    double vbias = 0.0;
+    for (const PlaneMatch& m : last_matches) {
+      if (std::abs(m.normal.z()) > 0.8f) ++n_vert;
+      vbias += static_cast<double>(m.normal.z() * m.residual);
+    }
+    const double n_match = static_cast<double>(last_matches.size());
+    result.vert_normal_frac = static_cast<double>(n_vert) / n_match;
+    result.vert_resid_bias = vbias / n_match;
   }
 
   // Mean rotation and (gravity-removed) linear acceleration over the window.

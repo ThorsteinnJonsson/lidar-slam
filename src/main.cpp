@@ -94,6 +94,10 @@ int main() {
   // ~25 ms offset is the root cause, correcting it should shrink these.
   double peak_gtilt_deg = 0.0;
   double peak_ba = 0.0;
+  // Running sum of the per-scan world-frame attitude correction (deg). If a
+  // sustained directional registration bias drives the gravity tilt, the
+  // horizontal (x,y) component of this sum integrates to ~the final tilt.
+  Eigen::Vector3d dtheta_world_sum = Eigen::Vector3d::Zero();
 
   // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
   const std::filesystem::path eval_dir = "evaluation";
@@ -134,6 +138,7 @@ int main() {
       ++scans;
       converged_scans += r.converged ? 1 : 0;
       total_iters += static_cast<size_t>(r.iterations);
+      dtheta_world_sum += r.update_dtheta_world_deg;
 
       // Track peak drift (temp) for the time-offset confirmation.
       {
@@ -202,14 +207,22 @@ int main() {
                 : 0.0;
         spdlog::info(
             "  {} scan {:5} | medres {:.4f} m | |omega| {:.3f} | |acc| {:.3f} "
-            "| match ({:.2f}) | |b_a| {:.3f} | gtilt {:5.2f} | dtheta {:.3f}",
+            "| match ({:.2f}) | |b_a| {:.3f} | gtilt {:5.2f} | dtheta {:.3f} | "
+            "dth_w [{:+.3f},{:+.3f},{:+.3f}] | vfrac {:.2f} | vbias {:+.4f} | "
+            "sum_h [{:+.2f},{:+.2f}] | pRP {:.3f} | pG {:.3f} | pmed {:.4f} | "
+            "pvb {:+.4f}",
             tag, scans, r.median_abs_residual, r.mean_omega, r.mean_acc,
-            match_frac, ekf->state().b_a.norm(), gtilt_deg,
-            r.update_dtheta_deg);
+            match_frac, ekf->state().b_a.norm(), gtilt_deg, r.update_dtheta_deg,
+            r.update_dtheta_world_deg.x(), r.update_dtheta_world_deg.y(),
+            r.update_dtheta_world_deg.z(), r.vert_normal_frac,
+            r.vert_resid_bias, dtheta_world_sum.x(), dtheta_world_sum.y(),
+            r.prior_att_rp_std_deg, r.prior_grav_std_deg, r.prior_medres,
+            r.prior_vbias);
       };
       if (scans % 50 == 0) log_diag("diag");
-      // Dense per-scan trace across the rest->motion transition.
-      if (scans >= 380 && scans <= 420) log_diag("onset");
+      // Dense per-scan trace across the rest->motion transition (widened to
+      // catch the onset attitude-correction burst as it forms).
+      if (scans >= 240 && scans <= 420) log_diag("onset");
 
       // Live visualization (no-op unless built with Rerun). Transform the scan
       // to world with the post-update pose; log the full map periodically since
@@ -304,6 +317,16 @@ int main() {
         "Drift: peak gtilt {:.2f} deg | final gtilt {:.2f} deg | peak |b_a| "
         "{:.3f} | final |b_a| {:.3f}",
         peak_gtilt_deg, final_gtilt, peak_ba, ekf->state().b_a.norm());
+    // Accumulated attitude correction (temp): if a directional registration
+    // bias drives the tilt, the horizontal magnitude of this sum ~ final gtilt
+    // and its direction is the tilt axis.
+    const double sum_h = std::hypot(dtheta_world_sum.x(), dtheta_world_sum.y());
+    spdlog::info(
+        "Drift: sum dtheta_world [{:+.2f}, {:+.2f}, {:+.2f}] deg | horiz "
+        "{:.2f} "
+        "deg",
+        dtheta_world_sum.x(), dtheta_world_sum.y(), dtheta_world_sum.z(),
+        sum_h);
   }
   return 0;
 }

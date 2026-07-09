@@ -54,6 +54,14 @@ std::vector<PlaneMatch> associate_planes(
     if (!fit_plane(neighbors, params.max_plane_dist, n_hat, d)) continue;
 
     const float residual = n_hat.dot(p_world) + d;
+
+    // FAST-LIO2 range-normalized quality gate (h_share_model in laserMapping):
+    // drop the point if it sits too far off its plane relative to sqrt(range).
+    const float range = p_body.norm();
+    if (range < 1e-6f) continue;  // degenerate point at the sensor origin
+    const float s = 1.0f - 0.9f * std::abs(residual) / std::sqrt(range);
+    if (s <= params.min_quality) continue;
+
     matches.push_back({p_body, n_hat, residual});
   }
   return matches;
