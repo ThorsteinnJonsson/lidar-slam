@@ -27,8 +27,9 @@ The deliverable is ONE number plus a screenshot-level visual check:
 - **Everything lives in `experiments/fastlio2_ntuviral/`** (this folder).
   Do NOT touch, build, or modify anything else in the repo. Do not modify the
   dataset yamls.
-- **Docker only** (host has no ROS). Use `ros:noetic-desktop-full` as the base
-  image - it includes RViz.
+- **Docker only** (host has no ROS). Use `osrf/ros:noetic-desktop-full` as the
+  base image - it includes RViz. (Note: the official `ros` Docker Hub repo has
+  no `desktop-full` tag, only `osrf/ros` does - confirmed 2026-07-10.)
 - **Use this fork, not the upstream repo**:
   `https://github.com/brytsknguyen/FAST_LIO` - it is the NTU VIRAL authors'
   fork and ships a ready-made NTU VIRAL config/launch (look under `config/` and
