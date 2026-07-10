@@ -31,9 +31,12 @@ constexpr double kVoxelLeaf = 0.5;     // map/scan downsample leaf size (m)
 
 // Lidar-to-IMU clock offset (seconds). The OS1 lidar stamps its points ahead
 // of the IMU clock on NTU VIRAL; correcting it (corrected = t_lidar + offset)
-// roughly halves ATE. Matches FAST-LIVO2's lidar_time_offset = -0.1.
+// roughly halves ATE. Re-swept under the FAST-LIO2 loose tuning (2026-07-10):
+// -0.05 beats the old -0.1 on every metric (ATE 0.112 -> 0.095, takeoff
+// attitude yank 3.6 -> 2.6 deg, trajectory-vs-GT tilt 4.5 -> 3.7 deg); 0 keeps
+// shrinking the tilt slightly but doubles ATE, so -0.05 is the joint optimum.
 // TODO: promote to a per-dataset calibration parameter instead of hard-coding.
-constexpr double kLidarTimeOffsetSec = -0.1;
+constexpr double kLidarTimeOffsetSec = -0.05;
 constexpr int64_t kLidarTimeOffsetNs =
     static_cast<int64_t>(kLidarTimeOffsetSec * 1e9);
 
