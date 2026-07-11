@@ -24,11 +24,11 @@ State sample_state() {
   return s;
 }
 
-Vector17 random_increment(uint32_t seed, double scale) {
+ErrorState random_increment(uint32_t seed, double scale) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<double> d(-scale, scale);
-  Vector17 dx;
-  for (int i = 0; i < 17; ++i) dx(i) = d(rng);
+  ErrorState dx;
+  for (int i = 0; i < kErrorDim; ++i) dx(i) = d(rng);
   return dx;
 }
 
@@ -36,7 +36,7 @@ Vector17 random_increment(uint32_t seed, double scale) {
 
 TEST(State, BoxplusZeroIsIdentity) {
   const State s = sample_state();
-  const State s2 = boxplus(s, Vector17::Zero());
+  const State s2 = boxplus(s, ErrorState::Zero());
 
   EXPECT_TRUE(s2.R.matrix().isApprox(s.R.matrix()));
   EXPECT_TRUE(s2.p.isApprox(s.p));
@@ -53,10 +53,10 @@ TEST(State, BoxminusOfSelfIsZero) {
 
 TEST(State, BoxminusInvertsBoxplus) {
   const State s = sample_state();
-  const Vector17 dx = random_increment(/*seed=*/7, /*scale=*/0.4);
+  const ErrorState dx = random_increment(/*seed=*/7, /*scale=*/0.4);
 
   const State s2 = boxplus(s, dx);
-  const Vector17 recovered = boxminus(s2, s);
+  const ErrorState recovered = boxminus(s2, s);
 
   EXPECT_TRUE(recovered.isApprox(dx, 1e-9))
       << "recovered:\n"
@@ -85,7 +85,7 @@ TEST(State, BoxplusReconstructsFromBoxminus) {
 TEST(State, BoxplusRotatesWithRightPerturbation) {
   const State s = sample_state();
   const Vec3 dtheta(0.05, -0.1, 0.07);
-  Vector17 dx = Vector17::Zero();
+  ErrorState dx = ErrorState::Zero();
   dx.segment<3>(0) = dtheta;
 
   const State s2 = boxplus(s, dx);
@@ -99,7 +99,7 @@ TEST(State, BoxplusRotatesWithRightPerturbation) {
 
 TEST(State, BoxplusAddsVectorBlocksLinearly) {
   const State s = sample_state();
-  Vector17 dx = Vector17::Zero();
+  ErrorState dx = ErrorState::Zero();
   dx.segment<3>(3) = Vec3(1, -2, 3);     // δp
   dx.segment<3>(6) = Vec3(0.1, 0.2, 0);  // δv
   dx.segment<3>(9) = Vec3(0, 0, 0.01);   // δb_g
@@ -118,7 +118,7 @@ TEST(State, BoxplusAddsVectorBlocksLinearly) {
 
 TEST(State, BoxplusTiltsGravityKeepingMagnitude) {
   const State s = sample_state();
-  Vector17 dx = Vector17::Zero();
+  ErrorState dx = ErrorState::Zero();
   dx.segment<2>(15) = Vec2(0.05, -0.03);  // δg on S² (tilt, not stretch)
 
   const State s2 = boxplus(s, dx);

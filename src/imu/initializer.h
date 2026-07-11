@@ -50,7 +50,7 @@ struct InitParams {
 struct InitResult {
   bool ok{false};  // false if the window is not stationary
   State state;
-  Eigen::Matrix<double, 17, 17> cov{Eigen::Matrix<double, 17, 17>::Zero()};
+  ErrorMatrix cov{ErrorMatrix::Zero()};
 
   // Diagnostics for logging.
   double accel_mean_norm{0.0};

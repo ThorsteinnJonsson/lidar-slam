@@ -100,7 +100,7 @@ TEST(Initializer, CovarianceSeedStructure) {
 
   // Symmetric, PSD diagonal, every entry positive.
   EXPECT_LT((r.cov - r.cov.transpose()).norm(), 1e-12);
-  for (int i = 0; i < 17; ++i) EXPECT_GT(r.cov(i, i), 0.0);
+  for (int i = 0; i < kErrorDim; ++i) EXPECT_GT(r.cov(i, i), 0.0);
 
   // Position and gyro bias are pinned tight (position is a gauge freedom, gyro
   // bias is well observed at rest), so they carry the smallest variances. The

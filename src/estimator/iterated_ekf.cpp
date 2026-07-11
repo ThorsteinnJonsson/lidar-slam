@@ -5,7 +5,7 @@
 IteratedEkf::IteratedEkf(const NoiseParams& noise,
                          const Sophus::SE3d& T_imu_lidar, const IekfConfig& cfg,
                          const PlaneAssocParams& assoc, const State& x0,
-                         const Eigen::Matrix<double, 17, 17>& P0,
+                         const ErrorMatrix& P0,
                          const LocalMapParams& map_params)
     : map_(map_params),
       x_(x0),

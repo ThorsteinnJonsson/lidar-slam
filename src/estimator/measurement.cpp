@@ -7,7 +7,7 @@ LinearizedMeasurement build_measurement(
   const Eigen::Index m = static_cast<Eigen::Index>(matches.size());
 
   LinearizedMeasurement out;
-  out.H = Eigen::Matrix<double, Eigen::Dynamic, 17>::Zero(m, 17);
+  out.H = MeasurementJacobian::Zero(m, kErrorDim);
   out.z = Eigen::VectorXd::Zero(m);
 
   const Eigen::Matrix3d R = s.R.matrix();

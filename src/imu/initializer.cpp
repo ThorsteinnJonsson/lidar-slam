@@ -60,7 +60,7 @@ InitResult initialize_static(const std::vector<ImuMeasurement>& imu,
 
   // Covariance seed: diagonal from per-block standard deviations.
   auto sq = [](double v) { return v * v; };
-  Eigen::Matrix<double, 17, 1> diag;
+  ErrorState diag;
   diag.segment<3>(0).setConstant(sq(params.theta_std));
   diag.segment<3>(3).setConstant(sq(params.pos_std));
   diag.segment<3>(6).setConstant(sq(params.vel_std));

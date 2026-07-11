@@ -61,11 +61,9 @@ State ImuPropagator::propagate(const State& s0, const ImuMeasurement& m0,
 //   G_c row δb_a: [ 0,  0, 0, I]
 //   G_c row δg:   [ 0,  0, 0, 0]
 
-std::pair<State, Eigen::Matrix<double, 17, 17>>
-ImuPropagator::propagate_with_covariance(const State& s0,
-                                         const Eigen::Matrix<double, 17, 17>& P,
-                                         const ImuMeasurement& m0,
-                                         const ImuMeasurement& m1) const {
+std::pair<State, ErrorMatrix> ImuPropagator::propagate_with_covariance(
+    const State& s0, const ErrorMatrix& P, const ImuMeasurement& m0,
+    const ImuMeasurement& m1) const {
   const double dt =
       static_cast<double>(m1.stamp.to_nsec() - m0.stamp.to_nsec()) * 1e-9;
 
@@ -92,7 +90,7 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   const Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
   const Eigen::Matrix3d R_mat = s0.R.matrix();
 
-  Eigen::Matrix<double, 17, 17> Fc = Eigen::Matrix<double, 17, 17>::Zero();
+  ErrorMatrix Fc = ErrorMatrix::Zero();
 
   // δθ row
   Fc.block<3, 3>(0, 0) = -skew(w_mid);  // -[ω̂]×
@@ -109,8 +107,7 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   Fc.block<3, 2>(6, 15) = -skew(s0.gravity) * s2_tangent_basis(s0.gravity);
 
   // ── Discrete Jacobian: F_d ≈ I + F_c·dt (first-order) ────────────────────
-  const Eigen::Matrix<double, 17, 17> Fd =
-      Eigen::Matrix<double, 17, 17>::Identity() + Fc * dt;
+  const ErrorMatrix Fd = ErrorMatrix::Identity() + Fc * dt;
 
   // ── Build additive noise covariance Q_d = G_c·Q_c·G_c^T·dt ──────────────
   // G_c·Q_c·G_c^T is block-diagonal with blocks:
@@ -125,14 +122,14 @@ ImuPropagator::propagate_with_covariance(const State& s0,
   const double sbg2 = noise_.gyro_rw_std * noise_.gyro_rw_std;
   const double sba2 = noise_.accel_rw_std * noise_.accel_rw_std;
 
-  Eigen::Matrix<double, 17, 17> Qd = Eigen::Matrix<double, 17, 17>::Zero();
+  ErrorMatrix Qd = ErrorMatrix::Zero();
   Qd.block<3, 3>(0, 0) = sg2 * dt * I3;
   Qd.block<3, 3>(6, 6) = sa2 * dt * I3;
   Qd.block<3, 3>(9, 9) = sbg2 * dt * I3;
   Qd.block<3, 3>(12, 12) = sba2 * dt * I3;
 
   // ── Propagate covariance ───────────────────────────────────────────────────
-  const Eigen::Matrix<double, 17, 17> P1 = Fd * P * Fd.transpose() + Qd;
+  const ErrorMatrix P1 = Fd * P * Fd.transpose() + Qd;
 
   return {s1, P1};
 }

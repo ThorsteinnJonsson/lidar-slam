@@ -27,14 +27,22 @@ struct State {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-// Error-state vector, ordered [δθ, δp, δv, δb_g, δb_a, δg]; δg is 2-DOF (S²).
-using Vector17 = Eigen::Matrix<double, 17, 1>;
+// Dimension of the error state δx = [δθ, δp, δv, δb_g, δb_a, δg]; every block
+// is a 3-vector except δg, which is 2-DOF (S²).
+inline constexpr int kErrorDim = 17;
+
+// Error-state increment vector, ordered as above.
+using ErrorState = Eigen::Matrix<double, kErrorDim, 1>;
+
+// Square operator over the error state: covariance P, transition Jacobians
+// (Fc/Fd), process noise Qd, and gain products (KH, S) all share this shape.
+using ErrorMatrix = Eigen::Matrix<double, kErrorDim, kErrorDim>;
 
 // Apply an error-state increment to a nominal state.
 // Rotation uses the right perturbation R' = R · Exp(δθ); gravity uses the S²
 // retraction (tilt only, magnitude fixed); every other block is vector
 // addition. Inverse of boxminus.
-inline State boxplus(const State& s, const Vector17& dx) {
+inline State boxplus(const State& s, const ErrorState& dx) {
   State out;
   out.R = s.R * Sophus::SO3d::exp(dx.segment<3>(0));
   out.p = s.p + dx.segment<3>(3);
@@ -48,8 +56,8 @@ inline State boxplus(const State& s, const Vector17& dx) {
 // Difference of two states: the increment dx with boxplus(b, dx) == a.
 // The rotation part is δθ = log(b.R⁻¹ · a.R); gravity is the S² difference; the
 // rest is plain subtraction.
-inline Vector17 boxminus(const State& a, const State& b) {
-  Vector17 dx;
+inline ErrorState boxminus(const State& a, const State& b) {
+  ErrorState dx;
   dx.segment<3>(0) = (b.R.inverse() * a.R).log();
   dx.segment<3>(3) = a.p - b.p;
   dx.segment<3>(6) = a.v - b.v;
