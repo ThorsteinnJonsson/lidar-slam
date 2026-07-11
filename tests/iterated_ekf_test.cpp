@@ -7,7 +7,7 @@
 #include <sophus/se3.hpp>
 #include <vector>
 
-#include "imu/state.h"
+#include "state/state.h"
 #include "types.h"
 
 namespace {

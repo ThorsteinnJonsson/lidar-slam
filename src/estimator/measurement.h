@@ -3,8 +3,8 @@
 #include <Eigen/Core>
 #include <vector>
 
-#include "imu/state.h"
 #include "map/association.h"
+#include "state/state.h"
 
 // Stacked linearization of the point-to-plane measurements about a state.
 struct LinearizedMeasurement {

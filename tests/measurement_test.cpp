@@ -6,8 +6,8 @@
 #include <sophus/so3.hpp>
 #include <vector>
 
-#include "imu/state.h"
 #include "map/association.h"
+#include "state/state.h"
 
 namespace {
 

@@ -1,4 +1,4 @@
-#include "imu/s2.h"
+#include "state/s2.h"
 
 #include <gtest/gtest.h>
 

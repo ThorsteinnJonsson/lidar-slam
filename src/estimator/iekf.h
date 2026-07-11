@@ -4,7 +4,7 @@
 #include <functional>
 
 #include "estimator/measurement.h"
-#include "imu/state.h"
+#include "state/state.h"
 
 // Tuning for the iterated EKF measurement update.
 struct IekfConfig {

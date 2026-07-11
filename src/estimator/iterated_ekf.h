@@ -6,10 +6,10 @@
 
 #include "estimator/iekf.h"
 #include "imu/propagator.h"
-#include "imu/state.h"
 #include "map/association.h"
 #include "map/ikd_tree.h"
 #include "map/local_map.h"
+#include "state/state.h"
 #include "types.h"
 
 // Stateful driver that ties the iEKF to the map across scans: predict over the

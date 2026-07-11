@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <vector>
 
-#include "imu/state.h"
+#include "state/state.h"
 #include "types.h"
 
 // Static initialization of the navigation state from a window of IMU samples

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "estimator/measurement.h"
-#include "imu/state.h"
+#include "state/state.h"
 
 namespace {
 

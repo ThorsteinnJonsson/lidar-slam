@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <sophus/so3.hpp>
 
-#include "imu/s2.h"
+#include "state/s2.h"
 
 // Full 17-DOF navigation state.
 // Error-state δx ∈ R¹⁷ is ordered [δθ, δp, δv, δb_g, δb_a, δg]. Every block is

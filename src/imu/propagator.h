@@ -3,8 +3,8 @@
 #include <Eigen/Core>
 #include <utility>
 
-#include "imu/state.h"
 #include "math/skew.h"
+#include "state/state.h"
 #include "types.h"
 
 struct NoiseParams {
