@@ -9,6 +9,7 @@
 namespace {
 
 using Vec3 = Eigen::Vector3d;
+using Vec2 = Eigen::Vector2d;
 
 // A state with all blocks set to distinct, non-trivial values so a bug in any
 // single segment shows up.
@@ -23,11 +24,11 @@ State sample_state() {
   return s;
 }
 
-Vector18 random_increment(uint32_t seed, double scale) {
+Vector17 random_increment(uint32_t seed, double scale) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<double> d(-scale, scale);
-  Vector18 dx;
-  for (int i = 0; i < 18; ++i) dx(i) = d(rng);
+  Vector17 dx;
+  for (int i = 0; i < 17; ++i) dx(i) = d(rng);
   return dx;
 }
 
@@ -35,7 +36,7 @@ Vector18 random_increment(uint32_t seed, double scale) {
 
 TEST(State, BoxplusZeroIsIdentity) {
   const State s = sample_state();
-  const State s2 = boxplus(s, Vector18::Zero());
+  const State s2 = boxplus(s, Vector17::Zero());
 
   EXPECT_TRUE(s2.R.matrix().isApprox(s.R.matrix()));
   EXPECT_TRUE(s2.p.isApprox(s.p));
@@ -52,10 +53,10 @@ TEST(State, BoxminusOfSelfIsZero) {
 
 TEST(State, BoxminusInvertsBoxplus) {
   const State s = sample_state();
-  const Vector18 dx = random_increment(/*seed=*/7, /*scale=*/0.4);
+  const Vector17 dx = random_increment(/*seed=*/7, /*scale=*/0.4);
 
   const State s2 = boxplus(s, dx);
-  const Vector18 recovered = boxminus(s2, s);
+  const Vector17 recovered = boxminus(s2, s);
 
   EXPECT_TRUE(recovered.isApprox(dx, 1e-9))
       << "recovered:\n"
@@ -84,7 +85,7 @@ TEST(State, BoxplusReconstructsFromBoxminus) {
 TEST(State, BoxplusRotatesWithRightPerturbation) {
   const State s = sample_state();
   const Vec3 dtheta(0.05, -0.1, 0.07);
-  Vector18 dx = Vector18::Zero();
+  Vector17 dx = Vector17::Zero();
   dx.segment<3>(0) = dtheta;
 
   const State s2 = boxplus(s, dx);
@@ -96,14 +97,13 @@ TEST(State, BoxplusRotatesWithRightPerturbation) {
   EXPECT_TRUE(s2.v.isApprox(s.v));
 }
 
-TEST(State, BoxplusAddsTranslationBlocksLinearly) {
+TEST(State, BoxplusAddsVectorBlocksLinearly) {
   const State s = sample_state();
-  Vector18 dx = Vector18::Zero();
+  Vector17 dx = Vector17::Zero();
   dx.segment<3>(3) = Vec3(1, -2, 3);     // δp
   dx.segment<3>(6) = Vec3(0.1, 0.2, 0);  // δv
   dx.segment<3>(9) = Vec3(0, 0, 0.01);   // δb_g
   dx.segment<3>(12) = Vec3(0.5, 0, 0);   // δb_a
-  dx.segment<3>(15) = Vec3(0, 0, 0.2);   // δg
 
   const State s2 = boxplus(s, dx);
 
@@ -111,7 +111,21 @@ TEST(State, BoxplusAddsTranslationBlocksLinearly) {
   EXPECT_TRUE(s2.v.isApprox(s.v + dx.segment<3>(6)));
   EXPECT_TRUE(s2.b_g.isApprox(s.b_g + dx.segment<3>(9)));
   EXPECT_TRUE(s2.b_a.isApprox(s.b_a + dx.segment<3>(12)));
-  EXPECT_TRUE(s2.gravity.isApprox(s.gravity + dx.segment<3>(15)));
-  // Rotation untouched when δθ is zero.
+  // Rotation untouched when δθ is zero; gravity untouched when δg is zero.
   EXPECT_TRUE(s2.R.matrix().isApprox(s.R.matrix()));
+  EXPECT_TRUE(s2.gravity.isApprox(s.gravity));
+}
+
+TEST(State, BoxplusTiltsGravityKeepingMagnitude) {
+  const State s = sample_state();
+  Vector17 dx = Vector17::Zero();
+  dx.segment<2>(15) = Vec2(0.05, -0.03);  // δg on S² (tilt, not stretch)
+
+  const State s2 = boxplus(s, dx);
+
+  EXPECT_NEAR(s2.gravity.norm(), s.gravity.norm(), 1e-9);  // magnitude fixed
+  EXPECT_FALSE(s2.gravity.isApprox(s.gravity));            // but it moved
+  // Everything else untouched.
+  EXPECT_TRUE(s2.R.matrix().isApprox(s.R.matrix()));
+  EXPECT_TRUE(s2.p.isApprox(s.p));
 }

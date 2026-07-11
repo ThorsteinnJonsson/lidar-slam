@@ -100,13 +100,16 @@ TEST(Initializer, CovarianceSeedStructure) {
 
   // Symmetric, PSD diagonal, every entry positive.
   EXPECT_LT((r.cov - r.cov.transpose()).norm(), 1e-12);
-  for (int i = 0; i < 18; ++i) EXPECT_GT(r.cov(i, i), 0.0);
+  for (int i = 0; i < 17; ++i) EXPECT_GT(r.cov(i, i), 0.0);
 
-  // Accel bias is the one loose block: its variance dwarfs attitude/position.
-  const double ba_var = r.cov(12, 12);
-  EXPECT_GT(ba_var, r.cov(0, 0));    // vs attitude
-  EXPECT_GT(ba_var, r.cov(3, 3));    // vs position
-  EXPECT_GT(ba_var, r.cov(15, 15));  // vs gravity
+  // Position and gyro bias are pinned tight (position is a gauge freedom, gyro
+  // bias is well observed at rest), so they carry the smallest variances. The
+  // genuinely uncertain blocks (attitude, accel bias, gravity) are looser.
+  const double pos_var = r.cov(3, 3);
+  const double bg_var = r.cov(9, 9);
+  EXPECT_GT(r.cov(0, 0), pos_var);    // attitude vs position
+  EXPECT_GT(r.cov(12, 12), pos_var);  // accel bias vs position
+  EXPECT_GT(r.cov(15, 15), bg_var);   // gravity vs gyro bias
 }
 
 TEST(Initializer, EmptyWindowNotOk) {

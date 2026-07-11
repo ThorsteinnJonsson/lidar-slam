@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "imu/buffer.h"
+#include "imu/state.h"
 #include "types.h"
 
 // A body (IMU) pose in the world frame at a given time.
@@ -14,16 +15,18 @@ struct StampedPose {
 };
 
 // Build the IMU trajectory spanning a scan window [t_start_ns, t_end_ns] by
-// integrating the buffered IMU measurements. The returned poses are expressed
-// relative to the scan start (first pose = identity); only intra-scan relative
-// motion matters for deskewing, so the absolute world frame is irrelevant here.
-//
-// TODO(velocity): this is rotation-only for now; translation is left at zero
-// because we have no velocity estimate yet. Once the iEKF provides a full state
-// (Phase 5/6), integrate position via ImuPropagator and feed the bias in too.
+// integrating the buffered IMU measurements, seeded from the EKF state at scan
+// start (the previous scan's posterior). Full kinematics: rotation from the
+// bias-corrected gyro, position from the estimated velocity plus the
+// bias-corrected accelerometer with gravity applied in the world frame, using
+// the same midpoint scheme as ImuPropagator. Poses are world-frame; only
+// intra-scan relative motion matters for deskewing, so the absolute position
+// origin is arbitrary (started at zero) but the attitude and gravity must be
+// the real ones for the accelerometer to project correctly.
 std::vector<StampedPose> build_scan_trajectory(const ImuBuffer& imu,
                                                uint64_t t_start_ns,
-                                               uint64_t t_end_ns);
+                                               uint64_t t_end_ns,
+                                               const State& s0);
 
 // Undistort a scan by transforming every point into the lidar frame at the
 // reference time t_ref_ns (typically scan end). Pure function over a supplied

@@ -8,9 +8,9 @@
 
 // Stacked linearization of the point-to-plane measurements about a state.
 struct LinearizedMeasurement {
-  // Measurement Jacobian, one row per correspondence (m x 18). Columns are
-  // ordered like the error state [δθ, δp, δv, δb_g, δb_a, δg].
-  Eigen::Matrix<double, Eigen::Dynamic, 18> H;
+  // Measurement Jacobian, one row per correspondence (m x 17). Columns are
+  // ordered like the error state [δθ, δp, δv, δb_g, δb_a, δg] (δg is 2-DOF).
+  Eigen::Matrix<double, Eigen::Dynamic, 17> H;
   // Signed point-to-plane residuals, one per correspondence (m).
   Eigen::VectorXd z;
 };

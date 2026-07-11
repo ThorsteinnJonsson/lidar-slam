@@ -29,28 +29,44 @@ Sophus::SE3d interpolate_pose(const std::vector<StampedPose>& traj,
 
 std::vector<StampedPose> build_scan_trajectory(const ImuBuffer& imu,
                                                uint64_t t_start_ns,
-                                               uint64_t t_end_ns) {
+                                               uint64_t t_end_ns,
+                                               const State& s0) {
   const std::vector<ImuMeasurement> meas =
       imu.get_between(t_start_ns, t_end_ns);
 
   std::vector<StampedPose> traj;
   traj.reserve(meas.size());
+  if (meas.empty()) return traj;
 
-  // Integrate gyro from identity. Position stays zero (rotation-only); see the
-  // TODO(velocity) note in the header.
-  const Eigen::Vector3d zero_p = Eigen::Vector3d::Zero();
-  Sophus::SO3d R;  // identity
-  traj.emplace_back(meas.front().stamp.to_nsec(), Sophus::SE3d(R, zero_p));
+  // Integrate the full IMU kinematics in the world frame, seeded from the EKF
+  // state at scan start. Rotation from the bias-corrected gyro; position from
+  // the estimated velocity plus the bias-corrected accelerometer, with gravity
+  // in the world frame. The absolute position origin is arbitrary (deskew uses
+  // only relative motion), so it starts at zero, but attitude and gravity are
+  // the real ones so the accelerometer projects into world correctly.
+  Sophus::SO3d R = s0.R;
+  Eigen::Vector3d v = s0.v;
+  Eigen::Vector3d p = Eigen::Vector3d::Zero();
+  traj.emplace_back(meas.front().stamp.to_nsec(), Sophus::SE3d(R, p));
 
   for (size_t k = 1; k < meas.size(); ++k) {
     const double dt = static_cast<double>(meas[k].stamp.to_nsec() -
                                           meas[k - 1].stamp.to_nsec()) *
                       1e-9;
-    // Midpoint angular velocity (bias assumed zero until the EKF estimates it).
+    // Midpoint, bias-corrected IMU (matches ImuPropagator).
     const Eigen::Vector3d w_mid =
-        0.5 * (meas[k - 1].angular_velocity + meas[k].angular_velocity);
+        0.5 * (meas[k - 1].angular_velocity + meas[k].angular_velocity) -
+        s0.b_g;
+    const Eigen::Vector3d a_mid =
+        0.5 * (meas[k - 1].linear_acceleration + meas[k].linear_acceleration) -
+        s0.b_a;
+    const Sophus::SO3d R_mid = R * Sophus::SO3d::exp(0.5 * w_mid * dt);
+    const Eigen::Vector3d a_world = R_mid * a_mid + s0.gravity;
+
     R = R * Sophus::SO3d::exp(w_mid * dt);
-    traj.emplace_back(meas[k].stamp.to_nsec(), Sophus::SE3d(R, zero_p));
+    p += v * dt + 0.5 * a_world * dt * dt;
+    v += a_world * dt;
+    traj.emplace_back(meas[k].stamp.to_nsec(), Sophus::SE3d(R, p));
   }
 
   return traj;

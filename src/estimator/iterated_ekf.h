@@ -25,7 +25,7 @@ class IteratedEkf {
  public:
   IteratedEkf(const NoiseParams& noise, const Sophus::SE3d& T_imu_lidar,
               const IekfConfig& cfg, const PlaneAssocParams& assoc,
-              const State& x0, const Eigen::Matrix<double, 18, 18>& P0,
+              const State& x0, const Eigen::Matrix<double, 17, 17>& P0,
               const LocalMapParams& map_params = {});
 
   // Process one scan. `imu` spans [previous scan ref, this scan ref] with
@@ -38,13 +38,13 @@ class IteratedEkf {
                          const std::vector<Eigen::Vector3f>& points_lidar);
 
   const State& state() const { return x_; }
-  const Eigen::Matrix<double, 18, 18>& covariance() const { return P_; }
+  const Eigen::Matrix<double, 17, 17>& covariance() const { return P_; }
   const IkdTree& map() const { return map_.tree(); }
 
  private:
   LocalMap map_;
   State x_;
-  Eigen::Matrix<double, 18, 18> P_;
+  Eigen::Matrix<double, 17, 17> P_;
   ImuPropagator propagator_;
   Sophus::SE3d T_imu_lidar_;
   IekfConfig cfg_;

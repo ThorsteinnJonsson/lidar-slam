@@ -19,7 +19,7 @@ struct IekfConfig {
 // Result of an update: corrected state, covariance, and loop diagnostics.
 struct EkfResult {
   State state;
-  Eigen::Matrix<double, 18, 18> covariance;
+  Eigen::Matrix<double, 17, 17> covariance;
   int iterations = 0;  // iterations actually run
   bool converged =
       false;  // true if the loop hit convergence_tol before the cap
@@ -35,7 +35,7 @@ using MeasurementFn = std::function<LinearizedMeasurement(const State&)>;
 // Starting from the propagated prior (x_hat, P), iterate:
 // clang-format off
 //   re-linearize (H, z) = measure(x_j)
-//   K   = (H^T R^-1 H + P^-1)^-1 H^T R^-1          (18x18 inversion, not m x m)
+//   K   = (H^T R^-1 H + P^-1)^-1 H^T R^-1          (17x17 inversion, not m x m)
 //   dx  = -K z - (I - K H) boxminus(x_j, x_hat)
 //   x_{j+1} = boxplus(x_j, dx)
 // clang-format on
@@ -43,5 +43,5 @@ using MeasurementFn = std::function<LinearizedMeasurement(const State&)>;
 //
 // With no correspondences the prior is returned unchanged.
 EkfResult iterated_update(const State& x_hat,
-                          const Eigen::Matrix<double, 18, 18>& P,
+                          const Eigen::Matrix<double, 17, 17>& P,
                           const MeasurementFn& measure, const IekfConfig& cfg);
