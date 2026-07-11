@@ -1,7 +1,6 @@
 #include "estimator/iekf.h"
 
 #include <Eigen/Dense>
-#include <numbers>
 
 #include "estimator/outlier.h"
 
@@ -53,13 +52,6 @@ EkfResult iterated_update(const State& x_hat,
   result.iterations = iters;
   // An empty system leaves the prior untouched, which counts as trivially done.
   result.converged = converged || !have_gain;
-  // Diagnostic: how far the update rotated the state off the propagated prior.
-  constexpr double kRadToDeg = 180.0 / std::numbers::pi;
-  const Eigen::Vector3d dtheta_body = (x_hat.R.inverse() * x.R).log();
-  result.update_dtheta_deg = dtheta_body.norm() * kRadToDeg;
-  // Same correction rotated into the world frame (Ad_{R} = R for SO3), so its
-  // horizontal component lines up with the gravity-tilt axis.
-  result.update_dtheta_world_deg = (x_hat.R * dtheta_body) * kRadToDeg;
   if (have_gain) {
     const Matrix17 KH = K * H;
     const Matrix17 P_upd = (I17 - KH) * P;

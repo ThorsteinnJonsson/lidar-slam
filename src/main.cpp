@@ -1,12 +1,10 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
-#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <numbers>
 #include <optional>
 #include <vector>
 
@@ -87,11 +85,6 @@ int main() {
                           .accel_noise_std = 0.3162,  // sqrt(0.1)
                           .gyro_rw_std = 0.01,        // sqrt(1e-4)
                           .accel_rw_std = 0.01};      // sqrt(1e-4)
-  // Datasheet alternative (kept for the bisect):
-  // const NoiseParams noise{.gyro_noise_std = imu_cal.gyro_noise_std,
-  //                         .accel_noise_std = imu_cal.accel_noise_std,
-  //                         .gyro_rw_std = imu_cal.gyro_rw_std,
-  //                         .accel_rw_std = imu_cal.accel_rw_std};
 
   BagReader reader(dataset + "/eee_03.bag");
 
@@ -104,14 +97,6 @@ int main() {
   size_t converged_scans = 0;  // scans whose iEKF hit convergence_tol
   size_t total_iters = 0;      // iEKF iterations summed over all scans
   size_t gt_msgs = 0;
-  // Peak drift over the run (temp), for the time-offset confirmation: if the
-  // ~25 ms offset is the root cause, correcting it should shrink these.
-  double peak_gtilt_deg = 0.0;
-  double peak_ba = 0.0;
-  // Running sum of the per-scan world-frame attitude correction (deg). If a
-  // sustained directional registration bias drives the gravity tilt, the
-  // horizontal (x,y) component of this sum integrates to ~the final tilt.
-  Eigen::Vector3d dtheta_world_sum = Eigen::Vector3d::Zero();
 
   // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
   const std::filesystem::path eval_dir = "evaluation";
@@ -152,32 +137,6 @@ int main() {
       ++scans;
       converged_scans += r.converged ? 1 : 0;
       total_iters += static_cast<size_t>(r.iterations);
-      dtheta_world_sum += r.update_dtheta_world_deg;
-
-      // Track peak drift (temp) for the time-offset confirmation.
-      {
-        const Eigen::Vector3d& g = ekf->state().gravity;
-        const double gtilt =
-            std::acos(std::clamp(-g.normalized().z(), -1.0, 1.0)) * 180.0 /
-            std::numbers::pi;
-        peak_gtilt_deg = std::max(peak_gtilt_deg, gtilt);
-        peak_ba = std::max(peak_ba, ekf->state().b_a.norm());
-      }
-
-      // TEMP timestamp-structure probe: dump the per-point offset range + scan
-      // period for a few scans to check the deskew time handling (is the "t"
-      // field populated in ns, and where does the header stamp sit).
-      if ((scans <= 3 || (scans >= 399 && scans <= 401)) &&
-          !cloud.t_offset_ns.empty()) {
-        const auto mm = std::minmax_element(cloud.t_offset_ns.begin(),
-                                            cloud.t_offset_ns.end());
-        spdlog::info(
-            "TS scan {:4} | base {} ns | off[min {}, max {}] ns | span {:.2f} "
-            "ms | npts {} | t_end {}",
-            scans, cloud.stamp.to_nsec(), *mm.first, *mm.second,
-            static_cast<double>(*mm.second - *mm.first) * 1e-6,
-            cloud.t_offset_ns.size(), t_end);
-      }
 
       const Eigen::Vector3d& p = ekf->state().p;
       const Eigen::Quaterniond q = ekf->state().R.unit_quaternion();
@@ -201,42 +160,6 @@ int main() {
             scans, p.x(), p.y(), p.z(), ekf->map().size(), r.iterations,
             r.converged ? "conv" : "");
       }
-
-      // Drift diagnostics (temporary): if the free-gravity state is absorbing
-      // accel-bias error, its direction walks off vertical while b_a stays near
-      // zero. gtilt is the angle of the gravity estimate off its initial -Z;
-      // dtheta is how hard this scan's update rotated the state. matchfrac and
-      // medres probe registration quality: a sparse-map failure at motion onset
-      // shows a low match fraction and/or large median point-plane residual,
-      // while a bias observability transient shows those steady but |b_a|
-      // moving.
-      const auto log_diag = [&](const char* tag) {
-        const Eigen::Vector3d& g = ekf->state().gravity;
-        const double gtilt_deg =
-            std::acos(std::clamp(-g.normalized().z(), -1.0, 1.0)) * 180.0 /
-            std::numbers::pi;
-        const double match_frac =
-            r.num_scan_points > 0
-                ? static_cast<double>(r.num_matches) / r.num_scan_points
-                : 0.0;
-        spdlog::info(
-            "  {} scan {:5} | medres {:.4f} m | |omega| {:.3f} | |acc| {:.3f} "
-            "| match ({:.2f}) | |b_a| {:.3f} | gtilt {:5.2f} | dtheta {:.3f} | "
-            "dth_w [{:+.3f},{:+.3f},{:+.3f}] | vfrac {:.2f} | vbias {:+.4f} | "
-            "sum_h [{:+.2f},{:+.2f}] | pRP {:.3f} | pG {:.3f} | pmed {:.4f} | "
-            "pvb {:+.4f}",
-            tag, scans, r.median_abs_residual, r.mean_omega, r.mean_acc,
-            match_frac, ekf->state().b_a.norm(), gtilt_deg, r.update_dtheta_deg,
-            r.update_dtheta_world_deg.x(), r.update_dtheta_world_deg.y(),
-            r.update_dtheta_world_deg.z(), r.vert_normal_frac,
-            r.vert_resid_bias, dtheta_world_sum.x(), dtheta_world_sum.y(),
-            r.prior_att_rp_std_deg, r.prior_grav_std_deg, r.prior_medres,
-            r.prior_vbias);
-      };
-      if (scans % 50 == 0) log_diag("diag");
-      // Dense per-scan trace across the rest->motion transition (widened to
-      // catch the onset attitude-correction burst as it forms).
-      if (scans >= 240 && scans <= 420) log_diag("onset");
 
       // Live visualization (no-op unless built with Rerun). Transform the scan
       // to world with the post-update pose; log the full map periodically since
@@ -327,26 +250,6 @@ int main() {
         100.0 * static_cast<double>(converged_scans) /
             static_cast<double>(scans),
         static_cast<double>(total_iters) / static_cast<double>(scans));
-    // Drift confirmation (temp): baseline peaks are ~10 deg gtilt / ~1.7 |b_a|;
-    // if the ~25 ms offset is the cause these shrink when it is corrected.
-    const Eigen::Vector3d gf = ekf->state().gravity;
-    const double final_gtilt =
-        std::acos(std::clamp(-gf.normalized().z(), -1.0, 1.0)) * 180.0 /
-        std::numbers::pi;
-    spdlog::info(
-        "Drift: peak gtilt {:.2f} deg | final gtilt {:.2f} deg | peak |b_a| "
-        "{:.3f} | final |b_a| {:.3f}",
-        peak_gtilt_deg, final_gtilt, peak_ba, ekf->state().b_a.norm());
-    // Accumulated attitude correction (temp): if a directional registration
-    // bias drives the tilt, the horizontal magnitude of this sum ~ final gtilt
-    // and its direction is the tilt axis.
-    const double sum_h = std::hypot(dtheta_world_sum.x(), dtheta_world_sum.y());
-    spdlog::info(
-        "Drift: sum dtheta_world [{:+.2f}, {:+.2f}, {:+.2f}] deg | horiz "
-        "{:.2f} "
-        "deg",
-        dtheta_world_sum.x(), dtheta_world_sum.y(), dtheta_world_sum.z(),
-        sum_h);
   }
   return 0;
 }
