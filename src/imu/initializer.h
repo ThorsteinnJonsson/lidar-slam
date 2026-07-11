@@ -28,10 +28,11 @@ struct InitParams {
   double max_accel_var{0.05};
   double max_gyro_var{0.01};
 
-  // Initial covariance seed, given as per-block standard deviations.
-  // Most blocks are tight: roll/pitch are measured from gravity, while yaw and
-  // position are gauge freedoms we fix by definition. Accel bias is the one
-  // genuinely unknown quantity, so it gets a loose seed.
+  // Initial covariance seed, given as per-block standard deviations. Position
+  // and gyro bias are pinned tight (position is a gauge freedom, gyro bias is
+  // well observed at rest); attitude carries ~1 deg of roll/pitch uncertainty
+  // and gravity a matching tilt allowance. Accel bias is deliberately seeded
+  // tight too (see below).
   double theta_std{0.017};  // attitude       ~1 deg
   double pos_std{1e-3};     // position       (origin by definition)
   double vel_std{1e-2};     // velocity       (at rest)
