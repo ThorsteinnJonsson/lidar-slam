@@ -1,281 +1,33 @@
 # SLAM Framework TODO
 
-Roughly following FAST-LIO2. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 LiDAR + IMU).
+FAST-LIO2-style LiDAR-inertial SLAM. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 + IMU).
 
----
+## Status
 
-## Phase 1: Foundation & I/O
+Runs end-to-end on `eee_03`: bag I/O → per-scan deskew → voxel downsample →
+iterated error-state EKF against an incremental k-d tree (ikd-Tree) map → TUM
+trajectory + evo metrics.
 
-- [x] Add Eigen, yaml-cpp, spdlog, nanoflann as dependencies (CMake FetchContent)
-- [x] Core data types: `ImuMeasurement`, `PointCloud` (`src/types.h`)
-- [x] ROS1 bag reader — minimal in-house parser (`src/io/bag_reader.h/cpp`), lz4 + uncompressed chunks
-- [x] Parse IMU messages (`/imu/imu`) and LiDAR point clouds (`/os1_cloud_node1/points`) (`src/io/ros_deserializer.h/cpp`)
-- [x] Smoke test: 70,475 IMU measurements and 1,814 point clouds from `eee_03.bag`
-- [x] Load extrinsic calibration from YAML (`T_Body_Lidar`, `T_Body_Imu`) — strips `%YAML:1.0` directive and duplicate `gyro_std` key before yaml-cpp parsing (`src/io/calibration.h/cpp`)
+State is 17-DOF `[R, p, v, b_g, b_a, g]`, error `δx = [δθ, δp, δv, δb_g, δb_a, δg] ∈ R¹⁷`
+(right perturbation on R, gravity on S² so it tilts but keeps `|g|` fixed).
 
----
+- [x] Phase 1 — I/O: in-house ROS1 bag reader, IMU/PointCloud2 deserializers, YAML calibration
+- [x] Phase 2 — IMU propagation: Sophus SO3/SE3, midpoint integration, error-state covariance, time-indexed buffer
+- [x] Phase 3 — Preprocessing: per-point deskew (full IMU kinematics), voxel downsampling
+- [x] Phase 4 — Map: ikd-Tree (balanced build, incremental insert/box-delete, partial rebuild, pruned k-NN)
+- [x] Phase 5 — Estimator: iterated ES-EKF, point-to-plane association, Mahalanobis outlier gate, pipeline glue
+- [x] Phase 6 — Pipeline: main loop, static initialization, sliding-window map crop, voxel-on-insert
+- [x] Phase 7 — Evaluation: TUM output + evo ATE/RTE vs Leica prism ground truth
 
-## Phase 2: Math Utilities & IMU Propagation
+## Open / deferred
 
-- [x] SO3 / SE3 Lie group operations — using Sophus (chosen for Ceres/g2o compatibility)
-- [x] Forward integration of IMU (gyro → rotation, accel → velocity/position) — midpoint rule (`src/imu/propagator.h/cpp`)
-- [x] Covariance propagation for the error-state — F_c/G_c Jacobians, F_d ≈ I + F_c·dt, Q_d = G_c·Q_c·G_c^T·dt (`src/imu/propagator.cpp`)
-- [x] IMU buffer with time-based lookup/interpolation — linear interp at boundaries (`src/imu/buffer.h/cpp`)
+- [ ] Online LiDAR↔IMU extrinsic estimation (stretch) — add `[δθ_ext, δp_ext]` to the error state;
+      needs motion excitation, watch observability. `T_imu_lidar` is currently fixed from YAML.
+- [ ] Parallel two-thread ikd-Tree rebuild.
+- [ ] Read parameters from file
+- [ ] Add support for more datasets (via command line)
 
----
+## Known issues
 
-## Phase 3: Point Cloud Preprocessing
-
-- [x] Capture per-point timestamps — parse the `t` field (uint32 ns offset from header stamp) in PointCloud2, store `t_offset_ns` in `PointCloud` (`src/types.h`, `src/io/ros_deserializer.cpp`)
-- [x] Expose lidar→imu extrinsic `T_imu_lidar` as `Sophus::SE3d` — `imu_from_lidar()` (`src/io/calibration.h/cpp`)
-- [x] Build per-scan IMU trajectory — `build_scan_trajectory()` integrates gyro across `[t_start, t_end]`, stores stamped poses (`src/preprocess/deskew.h/cpp`)
-- [x] Motion undistortion — `deskew()` as a pure function over a supplied trajectory; transforms each point to the scan-end frame via `T_I_L⁻¹ · T_rel · T_I_L` (`src/preprocess/deskew.cpp`)
-  - Rotation-only for now (velocity seed = 0). Full 6-DOF translation term deferred until the iEKF state feeds velocity in Phase 5/6 — marked `TODO(velocity)` in `deskew.h`
-- [x] Voxel downsampling — `voxel_downsample()` centroid-per-voxel over a bit-packed int64 hash grid; keeps x/y/z + averaged intensity, drops ring/t_offset_ns, skips non-finite points (`src/preprocess/voxel_grid.h/cpp`). Demo: 16384 → 4144 points at 0.5 m leaf
-
----
-
-## Phase 4: Map
-
-Incremental k-d tree (ikd-Tree, Cai et al. 2021) as the map backend, built up in
-testable milestones. Test harness added with 4.1 — first tests in the project.
-
-- [x] 4.1 Static tree + k-NN — balanced `build()` (max-spread axis, median split),
-      subtree AABB + treesize attributes, recursive `knn()` with AABB pruning and a
-      bounded max-heap (`src/map/ikd_tree.h/cpp`). `validate()` checks structural
-      invariants. Tested against brute-force and nanoflann oracles + edge cases
-      (`tests/ikd_tree_test.cpp`, 7 tests). Per-node deleted/treedeleted/pushdown/
-      invalid_num fields reserved but unused. Note: compiled into `unit_tests` only;
-      wires into `lidar_slam` in 4.3 when the estimator consumes it.
-- [x] 4.2 Incremental ops. API decisions: `size()` reports the **live** count
-      (`treesize − invalid_num`); delete is **box-delete only** (`delete(box)`, the op
-      FAST-LIO2 uses to drop far map regions — exact-point delete deferred);
-      `insert` takes a **batch** (`std::vector<Vec3>`) with single-point insert
-      internally. Refactor recursion to operate on `unique_ptr<Node>&` slots so a
-      rebuild can swap a subtree in place. Sub-steps:
-  - [x] Attribute plumbing — `pull_up` maintains `invalid_num`
-        (`deleted + L.invalid_num + R.invalid_num`) and `tree_deleted`
-        (`deleted && L.tree_deleted && R.tree_deleted`); `push_down` lazily
-        propagates a pending subtree-wide deletion into children before descending.
-  - [x] `insert` (batch + single) — recursive descend-by-axis on `unique_ptr&`
-        slots, attach leaf, `pull_up` on unwind. (Rebalance hook deferred to the
-        partial-rebuild step.) `size()` now reports the live count.
-  - [x] `remove_box` — AABB-vs-box: fully-inside → mark `tree_deleted`/`pushdown`
-        (`invalid_num = treesize`); no-overlap → skip; partial → `push_down`, test
-        own point, recurse, `pull_up`. (Rebalance hook deferred.)
-  - [x] `knn` update — skips `deleted` points and `tree_deleted` subtrees; AABB
-        pruning stays valid (box still bounds physical points, conservative).
-  - [x] Partial rebuild (single-threaded) — on unwind test balance
-        (`max(size_L, size_R) > α_bal·(treesize−1)`) and garbage (`invalid_num >
-α_del·treesize`); rebuild via `flatten` (live points only, skipping
-        `tree_deleted`) + `build_range`, swapped into the `unique_ptr` slot.
-        Constants α_bal=0.7, α_del=0.5, plus kMinRebuildSize=10 to skip churn on
-        tiny subtrees. Hook wired into `insert_at`/`remove_box_at`. Rebuilds the
-        lowest violating node on unwind (each parent re-checks afterward), not
-        strictly the topmost; strict-topmost is a possible refinement. Added
-        `physical_size()`/`height()` introspection for tests.
-  - [x] `validate` update — `check` recomputes/verifies `invalid_num` and
-        `tree_deleted` bottom-up; at a pending-`pushdown` node it treats the
-        subtree as fully deleted by definition rather than reading stale child
-        labels (pushdown nodes are never nested, so descendants stay
-        self-consistent). Const, non-mutating.
-  - [x] Tests (ops) — insert (from-empty, batch-after-build, single) and box-delete
-        (vs brute-force live set, delete-all, delete-then-insert) match brute force;
-        plus rebuild coverage: SortedInsertStaysBalanced (height < 4·log2 n),
-        RebuildReclaimsDeletedGarbage (physical size collapses toward live), and a
-        20-round InterleavedInsertDeleteMatchesBruteForce. `validate()` holds
-        throughout.
-- [x] 4.3 Point-to-plane association (`src/map/association.{h,cpp}`). Float
-      geometry (`Sophus::SE3f`, `Vector3f`), matching the map and FAST-LIO2.
-      Frame-agnostic: takes body-frame points + `T_world_body` and reports the
-      source point back in that frame (the iEKF folds in `T_imu_lidar` and passes
-      IMU-frame points). Output `PlaneMatch{point, normal (world, unit),
-  residual (signed)}`; Jacobian stays in the iEKF.
-  - [x] Per point: transform `p_world = T_world_body · p_body`, `map.knn(.,5)`,
-        distance gate (farthest neighbor dist2 > 5.0 m^2), plane fit
-        (`A·n = −1`, `d = 1/‖n‖`, `n̂ = n/‖n‖`), planarity gate
-        (`|n̂·qᵢ + d|` > 0.1 m), emit `residual = n̂·p_world + d`.
-  - [x] Params struct `PlaneAssocParams{num_neighbors=5, max_neighbor_dist2=5.0,
-max_plane_dist=0.1}`.
-  - [x] Build: `ikd_tree.cpp` + `association.cpp` added to the `lidar_slam`
-        target (and `unit_tests`).
-  - [x] Tests (5): synthetic tilted plane (normal + analytic residual incl.
-        sign), distance gate, planarity gate (non-coplanar corner), body->world
-        transform with the point reported in body frame, whole noisy planar sheet
-        (loose per-match normal, tight aggregate, no systematic bias).
-        Known limitation: the `A·n = −1` fit degenerates for planes through the
-        origin (rare); the planarity gate rejects such fits.
-
-Deferred refinements (revisit after the iEKF works):
-
-- [ ] Parallel two-thread rebuild for large subtrees — the paper's `N_max` scheme: a
-      worker rebuilds a copy while the main thread logs ops on the old subtree and
-      replays them on swap. Single-threaded rebuild stalls briefly on big rebuilds;
-      parallelize only if profiling shows it matters.
-- [ ] Voxel-downsample-on-insert — FAST-LIO2 keeps the map at fixed resolution by
-      snapping each insert to a voxel and keeping only the point nearest the voxel
-      center. For now map resolution is managed by box-delete + the per-scan
-      `voxel_downsample()`.
-
----
-
-## Phase 5: State Estimation (iEKF)
-
-Iterated error-state EKF (FAST-LIO2 / IKFoM style) over the existing 18-DOF state
-`[R, p, v, b_g, b_a, gravity]`, error `δx = [δθ, δp, δv, δb_g, δb_a, δg]` (right
-perturbation `R = R̄·Exp(δθ)`). Predict is already done
-(`ImuPropagator::propagate_with_covariance`); this phase is the measurement
-update. New module under `src/estimator/`. Filter runs in `double`; float
-`PlaneMatch` values are cast at H-build time.
-
-Measurement model (per correspondence): `p_W = R·p_I + p` with
-`p_I = T_imu_lidar · p_L` fixed; residual `h = n̂ᵀ(R·p_I + p) + d`. Linearized
-row of H (1×18): `δθ` block `-n̂ᵀ R [p_I]ₓ`, `δp` block `n̂ᵀ`, rest zero
-(v / biases / gravity corrected only through P cross-terms in a single frame).
-
-The iEKF passes lidar points pre-multiplied by `T_imu_lidar` (so they are in the
-IMU frame) and `T_world_body = T_WI` to `associate_planes`; the returned
-`PlaneMatch.point` is then exactly `p_I` and `residual` is `n̂ᵀp_W + d`.
-Decision: **re-associate every iteration** with the current pose (FAST-LIO2
-accurate), not a fixed iter-0 plane set.
-
-- [x] 5.1 `⊞`/`⊟` on `State` — `boxplus(State, δx)` (right perturbation
-      `R·Exp(δθ)`, rest additive), `boxminus(State, State)`
-      (`log(b.R⁻¹·a.R)` + subtraction), `Vector18` alias (`src/imu/state.h`,
-      header-only inline). Tests (6): zero-increment identity, boxminus-of-self,
-      both round-trip directions, right-perturbation rotation, linear blocks
-      (`tests/state_test.cpp`).
-- [x] 5.2 Measurement build — `build_measurement(State, vector<PlaneMatch>)`
-      returns `LinearizedMeasurement{H (m×18), z (m)}`
-      (`src/estimator/measurement.{h,cpp}`). `H` rows: δθ block `-nᵀR[p_I]ₓ`,
-      δp block `nᵀ`, rest zero; `z` echoes the (current-state) match residuals.
-      Contract: matches must come from `associate_planes` at the same state.
-      Tests (4): central finite-difference vs analytic H over all 18 columns,
-      unobserved blocks zero, residual echo, empty system
-      (`tests/measurement_test.cpp`).
-- [x] 5.3 Iterated update — `iterated_update(x̂, P, measure, cfg)` in
-      `src/estimator/iekf.{h,cpp}`, where `measure` is a
-      `std::function<LinearizedMeasurement(State)>` (callback so the loop is
-      testable without the map; 5.5 supplies associate+build, tests supply
-      synthetic planes). Info-form gain `K = (HᵀR⁻¹H + P⁻¹)⁻¹HᵀR⁻¹` via `ldlt`
-      on the 18×18 (never m×m), correction `δx = -Kz - (I-KH)·boxminus(xʲ, x̂)`
-      (boxminus-Jacobian `J ≈ I`), `xʲ⁺¹ = boxplus(xʲ, δx)`, converge on `‖δx‖`,
-      then `P⁺ = (I-KH)P` resymmetrized. `IekfConfig{sigma=0.01, max_iterations=5,
-  convergence_tol=1e-3}`; `EkfResult{state, covariance, iterations, converged}`.
-      Empty correspondences return the prior unchanged. Tests (4): pulls pose to
-      truth, iteration beats a single step on a large error, `P⁺`
-      symmetric/PSD/shrinks (incl. pose block), empty-system no-op
-      (`tests/iekf_test.cpp`).
-- [x] 5.4 Outlier rejection — Mahalanobis chi-squared gate
-      `gate_measurement(m, P, σ, chi2)` (`src/estimator/outlier.{h,cpp}`): drops
-      rows where `zᵢ²/(HᵢPHᵢᵀ + σ²) > chi2_thresh`. Normalizing by the full
-      innovation variance (not σ² alone) loosens the gate under prior
-      uncertainty and tightens it as the estimate firms up. Called from
-      `iterated_update` each iteration, guarded by `IekfConfig{reject_outliers=
-  true, outlier_chi2=3.841}` (χ²₁ 95%). Tests: unit (keeps inliers, drops
-      gross outliers, threshold monotonicity, larger-prior-keeps-borderline,
-      empty) in `tests/outlier_test.cpp`; integration (gate recovers truth from
-      8 gross outliers that drag the ungated solve off) in `tests/iekf_test.cpp`.
-      Note: this is a principled upgrade over FAST-LIO2, which uses a
-      range-scaled distance heuristic (`s = 1 - 0.9·|d|/√range`) rather than a
-      statistical test.
-- [x] 5.5 Pipeline glue — `IteratedEkf` (`src/estimator/iterated_ekf.{h,cpp}`)
-      owns the running estimate `(x, P)` and the ikd-tree map.
-      `process_scan(imu, points_lidar)`: predict over the IMU window
-      (consecutive `propagate_with_covariance` steps), then run
-      `iterated_update` with the real `MeasurementFn` (lidar points are folded
-      into the IMU frame once via `T_imu_lidar`, then re-associated against the
-      live iterate each iteration: `associate_planes` → `build_measurement`),
-      then insert the registered world-frame points into the map (`build` when
-      empty, else `insert`). First scan: empty map, update no-ops, the scan
-      seats the map. Decisions: pre-deskewed lidar points + an IMU-measurement
-      vector as the contract (deskew/voxel orchestration stays in the caller);
-      class kept separate from the pure `iterated_update` math. Deferred (as in
-      Phase 4): map region cropping via `remove_box`, voxel-downsample-on-insert,
-      static IMU initialization (Phase 6). Tests (3, `tests/iterated_ekf_test.cpp`):
-      seats map on first scan, static sensor holds pose over 20 scans,
-      constant-velocity with a wrong velocity seed tracks truth with bounded
-      error (synthetic box room of planes spanning all axes + consistent IMU).
-- [ ] 5.6 Online LiDAR↔IMU extrinsic estimation (stretch, deferred) — add
-      `[δθ_ext, δp_ext]` to the error state (18 → 24, or 23 with gravity on S²)
-      as in FAST-LIO2 (`offset_R_L_I` / `offset_T_L_I`); random-constant
-      dynamics, driven by the point-to-plane Jacobian. Currently `T_imu_lidar` is
-      fixed from YAML (`imu_from_lidar()`). Watch observability: translation
-      needs motion excitation, can drift/hurt accuracy otherwise.
-
----
-
-## Phase 6: Pipeline
-
-Next up, in order: (1) proper initialization, (2) map cropping, (3) ground-truth
-comparison (Phase 7).
-
-- [x] Main SLAM loop tying all phases together — `main.cpp` streams the bag,
-      buffers IMU, and syncs clouds with a pending queue (a cloud is processed
-      only once the IMU buffer covers its `[last_ref, t_end]` window, since the
-      IMU around scan-end arrives after the cloud message). Per scan:
-      `build_scan_trajectory` → `deskew` → `voxel_downsample(0.5)` →
-      `IteratedEkf::process_scan` → append pose to `trajectory.tum`. Verified on
-      `eee_03`: ~1814 scans, smooth indoor trajectory, no divergence.
-- [x] Proper initialization — new `src/imu/initializer.{h,cpp}`
-      (`initialize_static`), replacing the `static_init` shortcut in `main.cpp`.
-      `main.cpp` now slides a 200-sample window until a stationary stretch
-      passes the gate, then seeds the EKF from the `InitResult`. Tests (6) in
-      `tests/initializer_test.cpp`. Done:
-  - [x] Stationarity check over the init window (per-axis accel/gyro variance
-        gate) before trusting the average.
-  - [x] Separate gravity from accel bias (option A): pin `|g|` to the known
-        local value (9.78, Singapore) and leave `b_a = 0` for the filter to
-        learn under motion (at rest gravity and `b_a` are indistinguishable).
-        Verified on `eee_03`: measured `|accel| = 9.637`, so the ~0.14 m/s^2
-        deficit now becomes accel bias instead of corrupting gravity.
-  - [x] Align initial orientation to gravity: `R` rotates measured "up" onto
-        world up via minimal-arc (`FromTwoVectors`), fixing roll/pitch; yaw is a
-        gauge freedom fixed to zero by definition.
-  - [x] Seed `P` from per-block std-devs: tight on attitude/position/gravity
-        (measured or gauge-fixed), loose only on accel bias (genuinely unknown).
-- [x] Map cropping (sliding-window map) — extracted a `LocalMap`
-      (`src/map/local_map.{h,cpp}`) that owns the ikd-tree plus its growth/crop
-      policy; `IteratedEkf` just drives it (`map_.insert(...)` /
-      `map_.recenter(...)`), keeping the estimator focused on estimation.
-      `LocalMap::recenter` keeps the map to a cube of half-side
-      `keep_half_extent` around the sensor; when the position comes within
-      `slide_margin` of a face, the cube recenters and `crop_to_box` box-deletes
-      the six outer slabs (FAST-LIO2 "map sliding"). Lazy box init on the first
-      call; hysteresis means most scans cost only six comparisons.
-      `MapCropParams{enabled, keep_half_extent=150, slide_margin=30}` on the
-      `IteratedEkf` ctor (defaulted). Free helpers `box_needs_slide` /
-      `crop_to_box` are unit-tested (`tests/map_crop_test.cpp`, 4 tests). NOTE:
-      this is a no-op on `eee_03`
-      (5.7 m loop never nears the box edge); the ~2.4M-point growth there is
-      duplicate re-insertion, addressed by voxel-on-insert below. Tune the cube
-      size against an outdoor/large sequence during eval.
-- [x] Voxel-downsample-on-insert — `LocalMap::insert` gates each registered
-      point with a k-NN distance test: keep it only when no existing map point
-      lies within `voxel_leaf` (default 0.5 m), so re-observing a surface does
-      not pile up near-duplicates. Stateless (queries the live tree, so it stays
-      consistent with cropping) rather than a separate occupancy set. Config
-      folded into `LocalMapParams{crop, voxel_on_insert=true, voxel_leaf=0.5}`
-      on the `IteratedEkf` ctor (defaulted). Tests (5) in
-      `tests/local_map_test.cpp`. Verified on `eee_03`: map at scan 500 dropped
-      from ~2.4M to 89k pts, final map 333k (grows with explored space, not scan
-      count), static phase stays flat ~5k, full run 3.5 min -> 1:26 (~2.5x
-      faster, smaller tree speeds association), peak RAM 41 MB.
-
----
-
-## Phase 7: Evaluation
-
-- [x] Pose trajectory output (TUM format) — `main.cpp` writes `trajectory.tum`
-      (`t tx ty tz qx qy qz qw`), one line per processed scan.
-- [ ] Evaluate against NTU VIRAL ground truth (ATE / RTE metrics) — the dataset
-      ground truth is the Leica prism (`leica_prism.yaml` / `/leica/pose/relative`),
-      position-only and in its own frame, so align (umeyama / `evo`) before
-      computing ATE/RTE.
-  - [x] Plumbing: PoseStamped deserializer + prism cal loader; `main` writes
-        `evaluation/{trajectory,prism,gt}.tum`. `prism.tum` applies the prism
-        lever arm (`p + R * t_imu_prism`) so the comparison is prism-to-prism;
-        all at 9-decimal precision. Verified: 2990 GT poses extracted.
-  - [x] Run metrics with evo (`pip install evo`):
-        `evo_ape tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part`
-        and `evo_rpe ... --delta 1 --delta_unit m`. Then read ATE/RTE.
+- Map tilts ~3-4° at takeoff on `eee_03`. FAST-LIO2 tilts comparably (~3°) on the same bag, so we are
+  at parity and the cause looks intrinsic to the data/method. See `experiments/fastlio2_ntuviral/`.
