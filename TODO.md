@@ -67,7 +67,7 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
         pruning stays valid (box still bounds physical points, conservative).
   - [x] Partial rebuild (single-threaded) — on unwind test balance
         (`max(size_L, size_R) > α_bal·(treesize−1)`) and garbage (`invalid_num >
-        α_del·treesize`); rebuild via `flatten` (live points only, skipping
+α_del·treesize`); rebuild via `flatten` (live points only, skipping
         `tree_deleted`) + `build_range`, swapped into the `unique_ptr` slot.
         Constants α_bal=0.7, α_del=0.5, plus kMinRebuildSize=10 to skip churn on
         tiny subtrees. Hook wired into `insert_at`/`remove_box_at`. Rebuilds the
@@ -90,23 +90,24 @@ testable milestones. Test harness added with 4.1 — first tests in the project.
       Frame-agnostic: takes body-frame points + `T_world_body` and reports the
       source point back in that frame (the iEKF folds in `T_imu_lidar` and passes
       IMU-frame points). Output `PlaneMatch{point, normal (world, unit),
-      residual (signed)}`; Jacobian stays in the iEKF.
+  residual (signed)}`; Jacobian stays in the iEKF.
   - [x] Per point: transform `p_world = T_world_body · p_body`, `map.knn(.,5)`,
         distance gate (farthest neighbor dist2 > 5.0 m^2), plane fit
         (`A·n = −1`, `d = 1/‖n‖`, `n̂ = n/‖n‖`), planarity gate
         (`|n̂·qᵢ + d|` > 0.1 m), emit `residual = n̂·p_world + d`.
   - [x] Params struct `PlaneAssocParams{num_neighbors=5, max_neighbor_dist2=5.0,
-        max_plane_dist=0.1}`.
+max_plane_dist=0.1}`.
   - [x] Build: `ikd_tree.cpp` + `association.cpp` added to the `lidar_slam`
         target (and `unit_tests`).
   - [x] Tests (5): synthetic tilted plane (normal + analytic residual incl.
         sign), distance gate, planarity gate (non-coplanar corner), body->world
         transform with the point reported in body frame, whole noisy planar sheet
         (loose per-match normal, tight aggregate, no systematic bias).
-      Known limitation: the `A·n = −1` fit degenerates for planes through the
-      origin (rare); the planarity gate rejects such fits.
+        Known limitation: the `A·n = −1` fit degenerates for planes through the
+        origin (rare); the planarity gate rejects such fits.
 
 Deferred refinements (revisit after the iEKF works):
+
 - [ ] Parallel two-thread rebuild for large subtrees — the paper's `N_max` scheme: a
       worker rebuilds a copy while the main thread logs ops on the old subtree and
       replays them on swap. Single-threaded rebuild stalls briefly on big rebuilds;
@@ -160,7 +161,7 @@ accurate), not a fixed iter-0 plane set.
       on the 18×18 (never m×m), correction `δx = -Kz - (I-KH)·boxminus(xʲ, x̂)`
       (boxminus-Jacobian `J ≈ I`), `xʲ⁺¹ = boxplus(xʲ, δx)`, converge on `‖δx‖`,
       then `P⁺ = (I-KH)P` resymmetrized. `IekfConfig{sigma=0.01, max_iterations=5,
-      convergence_tol=1e-3}`; `EkfResult{state, covariance, iterations, converged}`.
+  convergence_tol=1e-3}`; `EkfResult{state, covariance, iterations, converged}`.
       Empty correspondences return the prior unchanged. Tests (4): pulls pose to
       truth, iteration beats a single step on a large error, `P⁺`
       symmetric/PSD/shrinks (incl. pose block), empty-system no-op
@@ -171,7 +172,7 @@ accurate), not a fixed iter-0 plane set.
       innovation variance (not σ² alone) loosens the gate under prior
       uncertainty and tightens it as the estimate firms up. Called from
       `iterated_update` each iteration, guarded by `IekfConfig{reject_outliers=
-      true, outlier_chi2=3.841}` (χ²₁ 95%). Tests: unit (keeps inliers, drops
+  true, outlier_chi2=3.841}` (χ²₁ 95%). Tests: unit (keeps inliers, drops
       gross outliers, threshold monotonicity, larger-prior-keeps-borderline,
       empty) in `tests/outlier_test.cpp`; integration (gate recovers truth from
       8 gross outliers that drag the ungated solve off) in `tests/iekf_test.cpp`.
@@ -275,15 +276,6 @@ comparison (Phase 7).
         `evaluation/{trajectory,prism,gt}.tum`. `prism.tum` applies the prism
         lever arm (`p + R * t_imu_prism`) so the comparison is prism-to-prism;
         all at 9-decimal precision. Verified: 2990 GT poses extracted.
-  - [ ] Run metrics with evo (`pip install evo`):
+  - [x] Run metrics with evo (`pip install evo`):
         `evo_ape tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part`
         and `evo_rpe ... --delta 1 --delta_unit m`. Then read ATE/RTE.
-  - [ ] Investigate: the filter stops converging around scan ~400 on `eee_03`
-        (hits the `max_iterations=5` cap without reaching `convergence_tol`).
-        This coincides with motion onset (scans 100-300 are static and converge
-        in 2-4 iters), so it is likely a motion/tuning issue rather than slow
-        drift. Candidates: too few iterations for fast motion, association
-        breaking down under larger inter-scan motion, deskew quality, or poor
-        initialization feeding bad velocity/bias. Quantify against ground truth
-        first, then tune.
-- [ ] Optional: ROS2 publisher for RViz visualization
