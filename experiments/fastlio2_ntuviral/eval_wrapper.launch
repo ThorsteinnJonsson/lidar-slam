@@ -1,0 +1,31 @@
+<!--
+  Wraps fast_lio's own launch/run_ntuviral.launch UNCHANGED (topics, extrinsics,
+  noise/cov, time offset - all exactly as the NTU VIRAL authors shipped it) and
+  adds only what our evaluation needs:
+    - point bag_file at our mounted eee_03.bag
+    - autorun:=true, so roslaunch shuts everything down the moment rosbag play
+      (a "required" node when autorun=true) finishes - otherwise the container
+      would idle forever after the 182 s playback ends
+    - record /Odometry to a bag we can convert to TUM on the host
+    - disable pcd_save_en (their default is "save every frame into one PCD" -
+      we only need the trajectory, not the map cloud)
+-->
+<launch>
+  <arg name="bag_file" default="/data/eee_03.bag"/>
+  <arg name="rviz" default="true"/>
+  <arg name="autorun" default="true"/>
+  <arg name="output_bag" default="/output/fastlio_odom.bag"/>
+
+  <include file="$(find fast_lio)/launch/run_ntuviral.launch">
+    <arg name="bag_file" value="$(arg bag_file)"/>
+    <arg name="rviz" value="$(arg rviz)"/>
+    <arg name="autorun" value="$(arg autorun)"/>
+  </include>
+
+  <!-- Overrides the rosparam block loaded by run_ntuviral.launch; must come
+       after the <include> above so it wins. -->
+  <param name="pcd_save/pcd_save_en" type="bool" value="false"/>
+
+  <node pkg="rosbag" type="record" name="odom_recorder" output="screen"
+        args="-O $(arg output_bag) /Odometry"/>
+</launch>
