@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <rerun.hpp>
 
 struct Visualizer::Impl {
@@ -93,19 +92,18 @@ void Visualizer::log_map(const IkdTree& map) {
   if (!impl_->ok) return;
   const std::vector<Eigen::Vector3f> pts = map.collect();
 
-  // Color by height over the map's current z-range.
-  float z_min = std::numeric_limits<float>::max();
-  float z_max = std::numeric_limits<float>::lowest();
-  for (const Eigen::Vector3f& p : pts) {
-    z_min = std::min(z_min, p.z());
-    z_max = std::max(z_max, p.z());
-  }
-  const float z_span = z_max > z_min ? z_max - z_min : 1.0f;
+  // Color by height over a fixed z-range so the gradient is stable across
+  // frames (a per-frame min/max rescales the colors as the map grows). Points
+  // outside the range clamp to the endpoint colors (hue_color clamps t to [0,
+  // 1]).
+  constexpr float kColorZMin = -2.0f;
+  constexpr float kColorZMax = 30.0f;
+  constexpr float kColorZSpan = kColorZMax - kColorZMin;
 
   std::vector<rerun::Color> colors;
   colors.reserve(pts.size());
   for (const Eigen::Vector3f& p : pts)
-    colors.push_back(hue_color((p.z() - z_min) / z_span));
+    colors.push_back(hue_color((p.z() - kColorZMin) / kColorZSpan));
 
   impl_->rec.log(
       "world/map",
