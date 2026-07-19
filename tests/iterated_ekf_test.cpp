@@ -7,14 +7,13 @@
 #include <sophus/se3.hpp>
 #include <vector>
 
-#include "imu/state.h"
+#include "state/state.h"
 #include "types.h"
 
 namespace {
 
 using Vec3 = Eigen::Vector3d;
 using Vec3f = Eigen::Vector3f;
-using Matrix17 = Eigen::Matrix<double, 17, 17>;
 
 // Six faces of an axis-aligned room sampled on a regular grid. The normals span
 // all three axes, so a single scan constrains the full 6-DOF pose.
@@ -80,7 +79,7 @@ TEST(IteratedEkf, SeatsMapOnFirstScan) {
   const auto world = room_points();
   IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
                   PlaneAssocParams{}, origin_state(),
-                  Matrix17::Identity() * 0.01);
+                  ErrorMatrix::Identity() * 0.01);
 
   const auto scan = scan_from(world, Sophus::SE3d());
   const std::vector<ImuMeasurement> imu = {
@@ -98,7 +97,7 @@ TEST(IteratedEkf, StaticSensorHoldsPose) {
   const auto world = room_points();
   IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
                   PlaneAssocParams{}, origin_state(),
-                  Matrix17::Identity() * 0.01);
+                  ErrorMatrix::Identity() * 0.01);
 
   const Sophus::SE3d T_true;  // identity, sensor does not move
   const auto scan = scan_from(world, T_true);
@@ -125,7 +124,7 @@ TEST(IteratedEkf, ConstantVelocityTracksTruth) {
   State x0 = origin_state();
   x0.v = Vec3(0.1, 0.0, 0.0);
   IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
-                  PlaneAssocParams{}, x0, Matrix17::Identity() * 0.1);
+                  PlaneAssocParams{}, x0, ErrorMatrix::Identity() * 0.1);
 
   const Vec3 gyro = Vec3::Zero();
   const Vec3 accel(0, 0, 9.81);  // constant-velocity specific force

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "imu/buffer.h"
-#include "imu/state.h"
+#include "state/state.h"
 #include "types.h"
 
 // A body (IMU) pose in the world frame at a given time.

@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <vector>
 
-#include "imu/state.h"
+#include "state/state.h"
 #include "types.h"
 
 // Static initialization of the navigation state from a window of IMU samples
@@ -50,7 +50,7 @@ struct InitParams {
 struct InitResult {
   bool ok{false};  // false if the window is not stationary
   State state;
-  Eigen::Matrix<double, 17, 17> cov{Eigen::Matrix<double, 17, 17>::Zero()};
+  ErrorMatrix cov{ErrorMatrix::Zero()};
 
   // Diagnostics for logging.
   double accel_mean_norm{0.0};

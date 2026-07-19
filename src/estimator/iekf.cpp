@@ -4,18 +4,15 @@
 
 #include "estimator/outlier.h"
 
-EkfResult iterated_update(const State& x_hat,
-                          const Eigen::Matrix<double, 17, 17>& P,
+EkfResult iterated_update(const State& x_hat, const ErrorMatrix& P,
                           const MeasurementFn& measure, const IekfConfig& cfg) {
-  using Matrix17 = Eigen::Matrix<double, 17, 17>;
-
   const double inv_r = 1.0 / (cfg.sigma * cfg.sigma);  // R = sigma^2 I
-  const Matrix17 I17 = Matrix17::Identity();
-  const Matrix17 P_inv = P.inverse();
+  const ErrorMatrix I17 = ErrorMatrix::Identity();
+  const ErrorMatrix P_inv = P.inverse();
 
   State x = x_hat;
-  Eigen::Matrix<double, Eigen::Dynamic, 17> H;
-  Eigen::Matrix<double, 17, Eigen::Dynamic> K;
+  MeasurementJacobian H;
+  KalmanGain K;
   int iters = 0;
   bool converged = false;
   bool have_gain = false;
@@ -27,16 +24,16 @@ EkfResult iterated_update(const State& x_hat,
     if (lm.H.rows() == 0) break;  // nothing observes the state this iteration
     H = lm.H;
 
-    // Information-form gain: invert the 17x17 system, never the m x m
+    // Information-form gain: invert the kErrorDim system, never the m x m
     // innovation.
-    const Matrix17 S = H.transpose() * (inv_r * H) + P_inv;
-    K = S.ldlt().solve(H.transpose() * inv_r);  // 17 x m
+    const ErrorMatrix S = H.transpose() * (inv_r * H) + P_inv;
+    K = S.ldlt().solve(H.transpose() * inv_r);  // kErrorDim x m
     have_gain = true;
 
-    const Matrix17 KH = K * H;
+    const ErrorMatrix KH = K * H;
     // Measurement pull plus the prior pull back toward x_hat, re-expressed in
     // the current tangent space (zero on the first iteration where x == x_hat).
-    const Vector17 dx = -K * lm.z - (I17 - KH) * boxminus(x, x_hat);
+    const ErrorState dx = -K * lm.z - (I17 - KH) * boxminus(x, x_hat);
 
     x = boxplus(x, dx);
     ++iters;
@@ -53,8 +50,8 @@ EkfResult iterated_update(const State& x_hat,
   // An empty system leaves the prior untouched, which counts as trivially done.
   result.converged = converged || !have_gain;
   if (have_gain) {
-    const Matrix17 KH = K * H;
-    const Matrix17 P_upd = (I17 - KH) * P;
+    const ErrorMatrix KH = K * H;
+    const ErrorMatrix P_upd = (I17 - KH) * P;
     result.covariance = 0.5 * (P_upd + P_upd.transpose());  // resymmetrize
   } else {
     result.covariance = P;

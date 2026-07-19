@@ -6,8 +6,8 @@
 #include <sophus/so3.hpp>
 #include <vector>
 
-#include "imu/state.h"
 #include "map/association.h"
+#include "state/state.h"
 
 namespace {
 
@@ -64,8 +64,8 @@ TEST(Measurement, JacobianMatchesFiniteDifference) {
     const double d = static_cast<double>(matches[i].residual) -
                      residual_at(s, matches[i], 0.0);
 
-    for (int j = 0; j < 17; ++j) {
-      Vector17 delta = Vector17::Zero();
+    for (int j = 0; j < kErrorDim; ++j) {
+      ErrorState delta = ErrorState::Zero();
       delta(j) = eps;
       const double r_plus = residual_at(boxplus(s, delta), matches[i], d);
       const double r_minus = residual_at(boxplus(s, -delta), matches[i], d);
@@ -100,6 +100,6 @@ TEST(Measurement, EmptyMatchesYieldEmptySystem) {
   const auto lin = build_measurement(s, {});
 
   EXPECT_EQ(lin.H.rows(), 0);
-  EXPECT_EQ(lin.H.cols(), 17);
+  EXPECT_EQ(lin.H.cols(), kErrorDim);
   EXPECT_EQ(lin.z.size(), 0);
 }

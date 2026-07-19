@@ -7,12 +7,11 @@
 #include <vector>
 
 #include "estimator/measurement.h"
-#include "imu/state.h"
+#include "state/state.h"
 
 namespace {
 
 using Vec3 = Eigen::Vector3d;
-using Matrix17 = Eigen::Matrix<double, 17, 17>;
 
 State true_state() {
   State s;
@@ -95,12 +94,12 @@ TEST(Iekf, PullsStateTowardTruth) {
   const State x_true = true_state();
   const Scene sc = make_scene(x_true);
 
-  Vector17 err = Vector17::Zero();
+  ErrorState err = ErrorState::Zero();
   err.segment<3>(0) = Vec3(0.05, -0.04, 0.03);  // rotation error
   err.segment<3>(3) = Vec3(0.1, -0.08, 0.06);   // position error
   const State x_hat = boxplus(x_true, err);
 
-  const Matrix17 P = Matrix17::Identity() * 0.25;
+  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
   const auto result = iterated_update(x_hat, P, scene_measure(sc), {});
 
   EXPECT_GT(pose_error(x_hat, x_true), 0.1);
@@ -113,11 +112,11 @@ TEST(Iekf, IterationImprovesOnSingleStep) {
   const Scene sc = make_scene(x_true);
 
   // A large enough error that one linearization undershoots.
-  Vector17 err = Vector17::Zero();
+  ErrorState err = ErrorState::Zero();
   err.segment<3>(0) = Vec3(0.3, -0.2, 0.25);
   err.segment<3>(3) = Vec3(0.3, -0.25, 0.2);
   const State x_hat = boxplus(x_true, err);
-  const Matrix17 P = Matrix17::Identity() * 0.25;
+  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
 
   IekfConfig one;
   one.max_iterations = 1;
@@ -139,19 +138,19 @@ TEST(Iekf, CovarianceShrinksAndStaysValid) {
   const State x_true = true_state();
   const Scene sc = make_scene(x_true);
 
-  Vector17 err = Vector17::Zero();
+  ErrorState err = ErrorState::Zero();
   err.segment<3>(0) = Vec3(0.02, -0.01, 0.015);
   err.segment<3>(3) = Vec3(0.03, -0.02, 0.01);
   const State x_hat = boxplus(x_true, err);
 
-  const Matrix17 P = Matrix17::Identity() * 0.25;
+  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
   const auto result = iterated_update(x_hat, P, scene_measure(sc), {});
-  const Matrix17& Pp = result.covariance;
+  const ErrorMatrix& Pp = result.covariance;
 
   // Symmetric.
   EXPECT_LT((Pp - Pp.transpose()).norm(), 1e-12);
   // Positive semidefinite.
-  const Eigen::SelfAdjointEigenSolver<Matrix17> es(Pp);
+  const Eigen::SelfAdjointEigenSolver<ErrorMatrix> es(Pp);
   EXPECT_GT(es.eigenvalues().minCoeff(), -1e-9);
   // Strictly less total uncertainty than the prior.
   EXPECT_LT(Pp.trace(), P.trace());
@@ -167,11 +166,11 @@ TEST(Iekf, OutlierGateRecoversFromBadCorrespondences) {
   Scene sc = make_scene(x_true);
   add_outliers(sc, x_true, /*count=*/8, /*offset=*/10.0);
 
-  Vector17 err = Vector17::Zero();
+  ErrorState err = ErrorState::Zero();
   err.segment<3>(0) = Vec3(0.02, -0.01, 0.015);
   err.segment<3>(3) = Vec3(0.03, -0.02, 0.01);
   const State x_hat = boxplus(x_true, err);
-  const Matrix17 P = Matrix17::Identity() * 0.25;
+  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
 
   IekfConfig ungated;
   ungated.reject_outliers = false;
@@ -189,7 +188,7 @@ TEST(Iekf, OutlierGateRecoversFromBadCorrespondences) {
 
 TEST(Iekf, NoCorrespondencesLeavePriorUnchanged) {
   const State x_hat = true_state();
-  const Matrix17 P = Matrix17::Identity() * 0.25;
+  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
 
   const MeasurementFn empty = [](const State& x) {
     return build_measurement(x, {});

@@ -3,14 +3,17 @@
 #include <Eigen/Core>
 #include <vector>
 
-#include "imu/state.h"
 #include "map/association.h"
+#include "state/state.h"
+
+// Point-to-plane measurement Jacobian: one row per correspondence, columns
+// ordered like the error state [δθ, δp, δv, δb_g, δb_a, δg] (δg is 2-DOF).
+using MeasurementJacobian = Eigen::Matrix<double, Eigen::Dynamic, kErrorDim>;
 
 // Stacked linearization of the point-to-plane measurements about a state.
 struct LinearizedMeasurement {
-  // Measurement Jacobian, one row per correspondence (m x 17). Columns are
-  // ordered like the error state [δθ, δp, δv, δb_g, δb_a, δg] (δg is 2-DOF).
-  Eigen::Matrix<double, Eigen::Dynamic, 17> H;
+  // Measurement Jacobian, one row per correspondence (m x kErrorDim).
+  MeasurementJacobian H;
   // Signed point-to-plane residuals, one per correspondence (m).
   Eigen::VectorXd z;
 };

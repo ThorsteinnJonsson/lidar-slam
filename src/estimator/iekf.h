@@ -4,7 +4,11 @@
 #include <functional>
 
 #include "estimator/measurement.h"
-#include "imu/state.h"
+#include "state/state.h"
+
+// Kalman gain mapping stacked measurement residuals into the error state
+// (kErrorDim x m).
+using KalmanGain = Eigen::Matrix<double, kErrorDim, Eigen::Dynamic>;
 
 // Tuning for the iterated EKF measurement update.
 struct IekfConfig {
@@ -19,7 +23,7 @@ struct IekfConfig {
 // Result of an update: corrected state, covariance, and loop diagnostics.
 struct EkfResult {
   State state;
-  Eigen::Matrix<double, 17, 17> covariance;
+  ErrorMatrix covariance;
   int iterations = 0;  // iterations actually run
   bool converged =
       false;  // true if the loop hit convergence_tol before the cap
@@ -42,6 +46,5 @@ using MeasurementFn = std::function<LinearizedMeasurement(const State&)>;
 // until ||dx|| < tol or max_iterations. Then P+ = (I - K H) P, resymmetrized.
 //
 // With no correspondences the prior is returned unchanged.
-EkfResult iterated_update(const State& x_hat,
-                          const Eigen::Matrix<double, 17, 17>& P,
+EkfResult iterated_update(const State& x_hat, const ErrorMatrix& P,
                           const MeasurementFn& measure, const IekfConfig& cfg);
