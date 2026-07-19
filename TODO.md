@@ -23,7 +23,10 @@ State is 17-DOF `[R, p, v, b_g, b_a, g]`, error `δx = [δθ, δp, δv, δb_g, �
 
 - [ ] Online LiDAR↔IMU extrinsic estimation (stretch) — add `[δθ_ext, δp_ext]` to the error state;
       needs motion excitation, watch observability. `T_imu_lidar` is currently fixed from YAML.
-- [ ] Parallel two-thread ikd-Tree rebuild.
+- [x] Background (parallel) ikd-Tree rebuild — subtrees ≥1500 rebuild on a worker thread, frozen
+      subtree stays live, swap on finalize. Measured no benefit (rebuild was <1% of wall-clock;
+      worker finishes within one scan) and a slight overhead; kept for completeness. ATE unchanged
+      to float32 epsilon (deferred swap shifts k-NN tie-breaking, not the neighbor set).
 - [ ] Read parameters from file
 - [ ] Add support for more datasets (via command line)
 

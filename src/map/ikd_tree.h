@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -64,6 +65,25 @@ class IkdTree {
   // accounting for pending pushdown). Used by the tests and as a debugging aid.
   bool validate() const;
 
+  // Block until any in-flight background rebuild has completed and been swapped
+  // in. Correctness never depends on this (the live subtree is always current);
+  // it only forces the pending rebalance to land. For tests and diagnostics.
+  void finish_pending_rebuild();
+
+  // Number of background (parallel) rebuilds started over this tree's lifetime.
+  // For tests and diagnostics.
+  size_t background_rebuild_count() const noexcept {
+    return background_rebuilds_;
+  }
+
+  // Test-only: when set, insert() stops auto-finalizing a pending background
+  // rebuild, so a test can hold one in flight and deterministically exercise
+  // the log-and-replay path by inserting into the frozen subtree. Not for
+  // normal use; the normal pipeline finalizes promptly on the next insert.
+  void set_suppress_auto_finalize(bool suppress) noexcept {
+    suppress_auto_finalize_ = suppress;
+  }
+
  private:
   struct Node {
     Eigen::Vector3f point;
@@ -74,10 +94,11 @@ class IkdTree {
     Eigen::Vector3f range_max;
     int treesize = 1;  // physical node count in this subtree
     // Lazy-deletion bookkeeping.
-    int invalid_num = 0;        // deleted nodes in this subtree
-    bool deleted = false;       // this node's own point is logically deleted
-    bool tree_deleted = false;  // every point in this subtree is deleted
-    bool pushdown = false;      // a subtree-wide delete is pending propagation
+    int invalid_num = 0;         // deleted nodes in this subtree
+    bool deleted = false;        // this node's own point is logically deleted
+    bool tree_deleted = false;   // every point in this subtree is deleted
+    bool pushdown = false;       // a subtree-wide delete is pending propagation
+    bool under_rebuild = false;  // root of the subtree a worker is rebuilding
   };
 
   // A k-NN search candidate; the search keeps these in a bounded max-heap.
@@ -100,22 +121,38 @@ class IkdTree {
   static void flatten(const Node* n, std::vector<Eigen::Vector3f>& out);
 
   // Rebuild the subtree held by `slot` from its live points: balanced, with
-  // dead nodes physically reclaimed.
+  // dead nodes physically reclaimed. Synchronous (blocks the caller).
   static void rebuild(std::unique_ptr<Node>& slot);
 
   static std::unique_ptr<Node> build_range(Eigen::Vector3f* first,
                                            Eigen::Vector3f* last);
 
+  // Rebuild decision after a mutation: nothing while another rebuild is in
+  // flight; a large enough subtree rebuilds in the background; otherwise it
+  // rebuilds synchronously. Returns true iff a background rebuild was started
+  // at `slot`. Non-static: touches the tree's async-rebuild state.
+  bool maybe_rebuild(std::unique_ptr<Node>& slot);
+
+  // Freeze `slot` and hand a snapshot of its live points to a worker thread
+  // that builds a balanced replacement. The frozen subtree stays live and is
+  // mutated in place meanwhile; those mutations are logged for replay.
+  void start_async_rebuild(std::unique_ptr<Node>& slot);
+
+  // If a background rebuild has finished, replay the logged ops onto the new
+  // subtree, swap it in, and refresh the ancestor chain. Called at the start of
+  // each public mutation. No-op if none is running or the worker is still busy.
+  void try_finalize_rebuild(bool block);
+
   // Insert a point into the subtree held by `slot`, operating on the slot (not
-  // a raw pointer) so a future rebuild can swap the whole subtree in place.
-  static void insert_at(std::unique_ptr<Node>& slot,
-                        const Eigen::Vector3f& point);
+  // a raw pointer) so a rebuild can swap the whole subtree in place.
+  // Non-static: logs into / captures state for an in-flight background rebuild.
+  void insert_at(std::unique_ptr<Node>& slot, const Eigen::Vector3f& point);
 
   // Box-delete within the subtree held by `slot` (slot, not raw pointer, so a
-  // future rebuild can swap the subtree in place).
-  static void remove_box_at(std::unique_ptr<Node>& slot,
-                            const Eigen::Vector3f& box_min,
-                            const Eigen::Vector3f& box_max);
+  // rebuild can swap the subtree in place).
+  void remove_box_at(std::unique_ptr<Node>& slot,
+                     const Eigen::Vector3f& box_min,
+                     const Eigen::Vector3f& box_max);
 
   void search(const Node* node, const Eigen::Vector3f& query, size_t k,
               std::vector<HeapItem>& heap) const;
@@ -125,4 +162,18 @@ class IkdTree {
              Eigen::Vector3f& out_hi) const;
 
   std::unique_ptr<Node> root_;
+
+  // Background-rebuild state. At most one rebuild is in flight at a time.
+  std::future<std::unique_ptr<Node>> rebuild_future_;
+  std::unique_ptr<Node>* frozen_slot_ = nullptr;  // slot to swap on completion
+  std::vector<Node*> frozen_ancestors_;           // parent..root, deepest first
+  // Points inserted into the frozen subtree while the worker built its copy;
+  // replayed onto the copy before the swap. Box-deletes cannot land here: a
+  // box-delete first blocks on any in-flight rebuild (see remove_box).
+  std::vector<Eigen::Vector3f> pending_inserts_;
+  bool capturing_ = false;  // collecting the ancestor chain on this unwind
+  bool replaying_ =
+      false;  // replaying pending_inserts_ onto the rebuilt subtree
+  size_t background_rebuilds_ = 0;       // count of async rebuilds started
+  bool suppress_auto_finalize_ = false;  // test-only, see setter
 };
