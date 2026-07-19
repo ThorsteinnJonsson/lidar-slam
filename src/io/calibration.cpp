@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <fstream>
+#include <initializer_list>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -54,6 +55,22 @@ Eigen::Isometry3d parse_opencv_transform(const YAML::Node& node) {
   iso.linear() = mat.topLeftCorner<3, 3>();
   iso.translation() = mat.topRightCorner<3, 1>();
   return iso;
+}
+
+// NTU VIRAL is inconsistent about extrinsic key names across sequences: the
+// horizontal lidar is T_Body_Lidar in eee_* but T_Body2Lidar in rtp_*/tnp_*,
+// and the prism is T_Body_Prism in eee_* but the (mislabeled) T_Body2Imu in
+// rtp_*/tnp_* -- whose matrix is nonetheless the body->prism transform, byte
+// for byte identical to the eee_* prism. Parse the first alias that is present.
+Eigen::Isometry3d parse_transform_aliased(
+    const YAML::Node& root, std::initializer_list<const char*> keys) {
+  for (const char* key : keys) {
+    if (const YAML::Node node = root[key]) return parse_opencv_transform(node);
+  }
+  std::string tried;
+  for (const char* key : keys)
+    tried += (tried.empty() ? "" : ", ") + std::string(key);
+  throw std::runtime_error("No extrinsic matrix under any of: " + tried);
 }
 
 // The NTU VIRAL imu_v100.yaml has a duplicate `gyro_std` key: the first is the
@@ -112,7 +129,8 @@ LidarCalibration load_lidar_calibration(const std::filesystem::path& path) {
 
   LidarCalibration cal;
   cal.topic = root["pointcloud_topic"].as<std::string>();
-  cal.T_body_lidar = parse_opencv_transform(root["T_Body_Lidar"]);
+  cal.T_body_lidar =
+      parse_transform_aliased(root, {"T_Body_Lidar", "T_Body2Lidar"});
   cal.vert_res = root["VERT_RES"].as<int>();
   cal.horz_res = root["HORZ_RES"].as<int>();
 
@@ -125,7 +143,8 @@ PrismCalibration load_prism_calibration(const std::filesystem::path& path) {
 
   PrismCalibration cal;
   cal.topic = root["gndtr_topic"].as<std::string>();
-  cal.T_body_prism = parse_opencv_transform(root["T_Body_Prism"]);
+  cal.T_body_prism =
+      parse_transform_aliased(root, {"T_Body_Prism", "T_Body2Imu"});
 
   return cal;
 }
