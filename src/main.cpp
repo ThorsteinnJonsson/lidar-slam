@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "estimator/iterated_ekf.h"
@@ -57,8 +58,19 @@ int main() {
   spdlog::flush_on(spdlog::level::info);  // flush progress as it is logged
   spdlog::info("lidar-slam initializing...");
 
-  const std::string dataset = "datasets/ntu_viral/eee_03";
-  const auto imu_cal = load_imu_calibration(dataset + "/imu_v100.yaml");
+  // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
+  // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
+  constexpr std::string_view kSequence = "rtp_03";
+  const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
+
+  // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and
+  // body-IMU extrinsic are constant ("/imu/imu", identity), and the noise is
+  // hard-coded below rather than read from the file, so a default calibration
+  // covers the sequences that lack the yaml.
+  const std::filesystem::path imu_yaml = dataset + "/imu_v100.yaml";
+  const ImuCalibration imu_cal = std::filesystem::exists(imu_yaml)
+                                     ? load_imu_calibration(imu_yaml)
+                                     : ImuCalibration{.topic = "/imu/imu"};
   const auto lidar_cal = load_lidar_calibration(dataset + "/lidar_horz.yaml");
   const auto prism_cal = load_prism_calibration(dataset + "/leica_prism.yaml");
   const Sophus::SE3d T_imu_lidar = imu_from_lidar(imu_cal, lidar_cal);
@@ -86,7 +98,7 @@ int main() {
                           .gyro_rw_std = 0.01,        // sqrt(1e-4)
                           .accel_rw_std = 0.01};      // sqrt(1e-4)
 
-  BagReader reader(dataset + "/eee_03.bag");
+  BagReader reader(dataset + "/" + std::string(kSequence) + ".bag");
 
   ImuBuffer imu_buffer;
   std::deque<PointCloud> pending;        // clouds awaiting IMU coverage
@@ -99,7 +111,9 @@ int main() {
   size_t gt_msgs = 0;
 
   // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
-  const std::filesystem::path eval_dir = "evaluation";
+  // Per-sequence subdir so running another sequence does not clobber the last.
+  const std::filesystem::path eval_dir =
+      std::filesystem::path("evaluation") / std::string(kSequence);
   std::filesystem::create_directories(eval_dir);
   std::ofstream traj_out(eval_dir / "trajectory.tum");  // IMU pose
   std::ofstream prism_out(eval_dir / "prism.tum");      // estimate at the prism
