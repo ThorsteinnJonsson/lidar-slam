@@ -11,7 +11,7 @@
 #include "map/association.h"
 #include "map/local_map.h"
 
-// Tunable runtime parameters, read from config/params.yaml.
+// Tunable runtime parameters, read from a YAML file (see config/README.md).
 //
 // Every field defaults to the value baked into its owning struct, and the
 // loader overwrites only the keys actually present in the file, so the file may

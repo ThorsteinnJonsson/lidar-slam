@@ -43,6 +43,13 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
+FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY git@github.com:CLIUtils/CLI11.git
+    GIT_TAG        v2.4.2
+    GIT_SHALLOW    TRUE
+)
+
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -52,10 +59,13 @@ set(SOPHUS_USE_BASIC_LOGGING ON CACHE BOOL "" FORCE)
 set(BUILD_SOPHUS_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_SOPHUS_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+set(CLI11_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CLI11_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CLI11_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 # Suppress the dependencies' own test suites (Eigen et al. key off BUILD_TESTING).
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(eigen yaml-cpp spdlog sophus)
+FetchContent_MakeAvailable(eigen yaml-cpp spdlog sophus cli11)
 
 # GoogleTest only when building tests (keeps non-test builds lean).
 if(LIDAR_SLAM_BUILD_TESTS)

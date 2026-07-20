@@ -65,6 +65,7 @@ target_link_libraries(lidar_slam PRIVATE
     yaml-cpp::yaml-cpp
     nanoflann::nanoflann
     spdlog::spdlog
+    CLI11::CLI11
     ${LZ4_LIBRARIES}
 )
 

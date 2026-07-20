@@ -23,27 +23,21 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 
 ## Open
 
-- [ ] Read parameters from file — pull the hard-coded constants out of `main.cpp` (noise, time offset,
-      voxel leaf, iEKF sigma, `kSequence`, `kEnableExtrinsicEstimation`).
-- [ ] Promote `kSequence` to a command-line argument (pairs naturally with the config-file work).
+- [ ] Dataset loader interface, when a second format actually lands. `--format` validates
+      today but selects nothing.
 
 ## Done, with findings worth keeping
 
-- [x] Online LiDAR↔IMU extrinsic estimation — `[δθ_ext, δp_ext]` added to the error state (17→23 DOF),
-      behind `kEnableExtrinsicEstimation` (default off, matching FAST-LIO2's `extrinsic_est_en: false`
-      for NTU VIRAL). Measured on `eee_03`: enabling it costs ATE (0.1119 → 0.1205 with a 1°/1 cm seed,
-      0.1137 even at 0.2°/2 mm). The extrinsic walks out to ~2-4σ of *whatever* seed it is given rather
-      than converging on a fixed value — it absorbs registration misfit instead of being observed
-      (δp_ext and δp shift the world point identically within a frame; only motion separates them).
-      Revisit on a sequence with real excitation. Note the 23-DOF filter costs ~22% wall-clock even
-      when the flag is off.
-- [x] Background (parallel) ikd-Tree rebuild — subtrees ≥1500 rebuild on a worker thread, frozen
-      subtree stays live, swap on finalize. Measured no benefit (rebuild was <1% of wall-clock;
-      worker finishes within one scan) and a slight overhead; kept for completeness. ATE unchanged
-      to float32 epsilon (deferred swap shifts k-NN tie-breaking, not the neighbor set).
-- [x] Multi-dataset support — `kSequence` selects the sequence; missing `imu_v100.yaml` falls back to
-      the NTU VIRAL-wide defaults, and the loader accepts the `T_Body2Lidar`/`T_Body2Imu` key aliases
-      that `rtp_03`/`tnp_01` use. Outputs go to `evaluation/<sequence>/`.
+- [x] CLI11 arguments: `--format`, `--sequence`, `--params` (all required), `--output`.
+- [x] Tunables in `config/ntu_viral.yaml` (see `config/README.md`).
+- [x] Online LiDAR↔IMU extrinsic estimation (17→23 DOF), behind `enable_extrinsic_estimation`,
+      default off. Costs ATE on `eee_03` (0.1119 → 0.1137 even at a 0.2°/2 mm seed) and the extrinsic
+      walks to ~2-4σ of whatever seed it gets instead of converging: it absorbs registration misfit
+      rather than being observed. Needs real motion excitation. 23-DOF costs ~22% wall-clock even off.
+- [x] Background (parallel) ikd-Tree rebuild for subtrees ≥1500. No benefit: rebuild was <1% of
+      wall-clock and the worker finishes within one scan. Kept for completeness.
+- [x] Multi-dataset support. `rtp_03`/`tnp_01` ship no `imu_v100.yaml` and use `T_Body2Lidar`/
+      `T_Body2Imu` key aliases; both handled. Outputs go to `evaluation/<sequence>/`.
 
 ## Known issues
 

@@ -9,8 +9,8 @@ with CMake + FetchContent.
 - CMake ≥ 3.25 and Ninja
 - `liblz4-dev` (ROS bag decompression)
 
-Most dependencies (Eigen, Sophus, spdlog, yaml-cpp, nanoflann, GoogleTest) are
-fetched automatically via CMake FetchContent.
+Most dependencies (Eigen, Sophus, spdlog, yaml-cpp, nanoflann, CLI11, GoogleTest)
+are fetched automatically via CMake FetchContent.
 
 ## Build
 
@@ -27,16 +27,25 @@ switching between them doesn't require a clean.
 ## Run
 
 ```bash
-./build/debug/lidar_slam
+./build/release/lidar_slam \
+    --format NTU_VIRAL \
+    --sequence datasets/ntu_viral/eee_03 \
+    --params config/ntu_viral.yaml
 ```
 
-Expects the NTU VIRAL dataset under `datasets/ntu_viral/eee_03` (calibration YAMLs
-plus `eee_03.bag`).
+| Option | | |
+| --- | --- | --- |
+| `--format` | required | Dataset layout. Only `NTU_VIRAL` so far. |
+| `--sequence` | required | Sequence directory. Its name also names the bag inside it (`eee_03/eee_03.bag`). |
+| `--params` | required | Tunable parameters, see [config/README.md](config/README.md). |
+| `--output` | optional | Output directory. Defaults to `evaluation/<sequence>`. |
+
+Run from the repository root: the paths above are relative.
 
 ## Evaluation
 
 Each run writes three [TUM-format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
-trajectories (`timestamp tx ty tz qx qy qz qw`) into `evaluation/`:
+trajectories (`timestamp tx ty tz qx qy qz qw`) into the output directory:
 
 | File             | Contents                                                                       |
 | ---------------- | ------------------------------------------------------------------------------ |

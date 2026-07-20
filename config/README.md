@@ -1,16 +1,14 @@
 # Configuration
 
-`params.yaml` holds the tunable runtime parameters. It is read at startup from
-the hard-coded path `config/params.yaml`, relative to the working directory, so
-run the binary from the repository root.
+One file per dataset format holds the tunable runtime parameters; pass it with
+`--params`. `ntu_viral.yaml` is the only one so far.
 
 Every key is optional: the loader starts from the defaults compiled into the
 parameter structs and overwrites only the keys present in the file.
 
 Not configured here:
 
-- **Dataset selection** (root directory and sequence) is hard-coded in
-  `main.cpp` for now and becomes a command-line argument later.
+- **Dataset selection** is on the command line (`--format`, `--sequence`).
 - **Sensor calibration** (`imu_v100.yaml`, `lidar_horz.yaml`,
   `leica_prism.yaml`) ships with each dataset and is loaded from there.
 - **ikd-Tree internals** (rebuild balance/garbage thresholds) are structural
