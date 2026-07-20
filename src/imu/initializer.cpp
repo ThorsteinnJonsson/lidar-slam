@@ -61,12 +61,14 @@ InitResult initialize_static(const std::vector<ImuMeasurement>& imu,
   // Covariance seed: diagonal from per-block standard deviations.
   auto sq = [](double v) { return v * v; };
   ErrorState diag;
-  diag.segment<3>(0).setConstant(sq(params.theta_std));
-  diag.segment<3>(3).setConstant(sq(params.pos_std));
-  diag.segment<3>(6).setConstant(sq(params.vel_std));
-  diag.segment<3>(9).setConstant(sq(params.bias_gyro_std));
-  diag.segment<3>(12).setConstant(sq(params.bias_accel_std));
-  diag.segment<2>(15).setConstant(sq(params.gravity_std));  // δg is 2-DOF (S²)
+  diag.segment<3>(kIdxTheta).setConstant(sq(params.theta_std));
+  diag.segment<3>(kIdxPos).setConstant(sq(params.pos_std));
+  diag.segment<3>(kIdxVel).setConstant(sq(params.vel_std));
+  diag.segment<3>(kIdxBiasGyro).setConstant(sq(params.bias_gyro_std));
+  diag.segment<3>(kIdxBiasAccel).setConstant(sq(params.bias_accel_std));
+  diag.segment<2>(kIdxGravity).setConstant(sq(params.gravity_std));  // 2-DOF
+  diag.segment<3>(kIdxExtRot).setConstant(sq(params.ext_rot_std));
+  diag.segment<3>(kIdxExtPos).setConstant(sq(params.ext_trans_std));
 
   result.ok = true;
   result.state = s;

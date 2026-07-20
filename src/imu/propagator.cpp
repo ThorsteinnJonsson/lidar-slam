@@ -31,6 +31,9 @@ State ImuPropagator::propagate(const State& s0, const ImuMeasurement& m0,
   s1.gravity = s0.gravity;
   s1.b_g = s0.b_g;
   s1.b_a = s0.b_a;
+  // Extrinsic is a random constant: carried through prediction unchanged.
+  s1.R_imu_lidar = s0.R_imu_lidar;
+  s1.p_imu_lidar = s0.p_imu_lidar;
 
   const Eigen::Vector3d a_world = R_mid * a_mid + s0.gravity;
   s1.v = s0.v + a_world * dt;
@@ -43,15 +46,20 @@ State ImuPropagator::propagate(const State& s0, const ImuMeasurement& m0,
 // ────────────────────────────────────────────────────
 
 // Error-state ordering: [δθ (0-2), δp (3-5), δv (6-8), δb_g (9-11), δb_a
-// (12-14), δg (15-16)]. δg is 2-DOF: gravity tilts on S² (see imu/s2.h).
+// (12-14), δg (15-16), δθ_ext (17-19), δp_ext (20-22)]. δg is 2-DOF: gravity
+// tilts on S² (see state/s2.h). The extrinsic blocks are random constants:
+// zero dynamics and zero process noise, so they move only through the
+// point-to-plane measurement.
 //
-// Continuous-time Jacobian F_c (17×17):
+// Continuous-time Jacobian F_c (23×23):
 //   δθ̇  = -[ω̂]× δθ  - δb_g
 //   δṗ  =  δv
 //   δv̇  = -R[â]× δθ  - R δb_a - [g]× B δg   (B = S² tangent basis at g)
 //   δḃ_g = 0
 //   δḃ_a = 0
 //   δġ   = 0
+//   δθ̇_ext = 0
+//   δṗ_ext = 0
 //
 // Noise input n = [n_g, n_a, n_bg, n_ba] ∈ R¹²:
 //   G_c row δθ:   [-I,  0, 0, 0]
@@ -82,6 +90,9 @@ std::pair<State, ErrorMatrix> ImuPropagator::propagate_with_covariance(
   s1.gravity = s0.gravity;
   s1.b_g = s0.b_g;
   s1.b_a = s0.b_a;
+  // Extrinsic is a random constant: carried through prediction unchanged.
+  s1.R_imu_lidar = s0.R_imu_lidar;
+  s1.p_imu_lidar = s0.p_imu_lidar;
   const Eigen::Vector3d a_world = R_mid * a_mid + s0.gravity;
   s1.v = s0.v + a_world * dt;
   s1.p = s0.p + s0.v * dt + 0.5 * a_world * dt * dt;

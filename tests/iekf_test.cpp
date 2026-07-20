@@ -88,6 +88,18 @@ double pose_error(const State& a, const State& b) {
   return boxminus(a, b).head<6>().norm();  // rotation + position only
 }
 
+// Prior for the pose-focused tests: loose on the navigation state, with the
+// LiDAR-IMU extrinsic effectively pinned. From a single frame the extrinsic is
+// degenerate with the pose (p_W = R(R_ext p_L + p_ext) + p, so a shift in
+// p_ext is indistinguishable from one in p); leaving it free would let the
+// update split the correction between them instead of driving the pose to
+// truth. Production seeds it tight from calibration for the same reason.
+ErrorMatrix pose_prior() {
+  ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  P.diagonal().segment<6>(kIdxExtRot).setConstant(1e-10);
+  return P;
+}
+
 }  // namespace
 
 TEST(Iekf, PullsStateTowardTruth) {
@@ -99,7 +111,7 @@ TEST(Iekf, PullsStateTowardTruth) {
   err.segment<3>(3) = Vec3(0.1, -0.08, 0.06);   // position error
   const State x_hat = boxplus(x_true, err);
 
-  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  const ErrorMatrix P = pose_prior();
   const auto result = iterated_update(x_hat, P, scene_measure(sc), {});
 
   EXPECT_GT(pose_error(x_hat, x_true), 0.1);
@@ -116,7 +128,7 @@ TEST(Iekf, IterationImprovesOnSingleStep) {
   err.segment<3>(0) = Vec3(0.3, -0.2, 0.25);
   err.segment<3>(3) = Vec3(0.3, -0.25, 0.2);
   const State x_hat = boxplus(x_true, err);
-  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  const ErrorMatrix P = pose_prior();
 
   IekfConfig one;
   one.max_iterations = 1;
@@ -143,7 +155,7 @@ TEST(Iekf, CovarianceShrinksAndStaysValid) {
   err.segment<3>(3) = Vec3(0.03, -0.02, 0.01);
   const State x_hat = boxplus(x_true, err);
 
-  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  const ErrorMatrix P = pose_prior();
   const auto result = iterated_update(x_hat, P, scene_measure(sc), {});
   const ErrorMatrix& Pp = result.covariance;
 
@@ -170,7 +182,7 @@ TEST(Iekf, OutlierGateRecoversFromBadCorrespondences) {
   err.segment<3>(0) = Vec3(0.02, -0.01, 0.015);
   err.segment<3>(3) = Vec3(0.03, -0.02, 0.01);
   const State x_hat = boxplus(x_true, err);
-  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  const ErrorMatrix P = pose_prior();
 
   IekfConfig ungated;
   ungated.reject_outliers = false;
@@ -188,7 +200,7 @@ TEST(Iekf, OutlierGateRecoversFromBadCorrespondences) {
 
 TEST(Iekf, NoCorrespondencesLeavePriorUnchanged) {
   const State x_hat = true_state();
-  const ErrorMatrix P = ErrorMatrix::Identity() * 0.25;
+  const ErrorMatrix P = pose_prior();
 
   const MeasurementFn empty = [](const State& x) {
     return build_measurement(x, {});

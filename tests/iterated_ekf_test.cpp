@@ -73,13 +73,22 @@ State origin_state() {
   return s;
 }
 
+// Prior with the LiDAR-IMU extrinsic pinned. These tests exercise pose and
+// velocity tracking, and a single scan cannot separate the extrinsic from the
+// pose (a shift in p_ext is indistinguishable from one in p), so leaving it
+// free would let it absorb the very error under test.
+ErrorMatrix nav_prior(double var) {
+  ErrorMatrix P = ErrorMatrix::Identity() * var;
+  P.diagonal().segment<6>(kIdxExtRot).setConstant(1e-10);
+  return P;
+}
+
 }  // namespace
 
 TEST(IteratedEkf, SeatsMapOnFirstScan) {
   const auto world = room_points();
-  IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
-                  PlaneAssocParams{}, origin_state(),
-                  ErrorMatrix::Identity() * 0.01);
+  IteratedEkf ekf(test_noise(), IekfConfig{}, PlaneAssocParams{},
+                  origin_state(), nav_prior(0.01));
 
   const auto scan = scan_from(world, Sophus::SE3d());
   const std::vector<ImuMeasurement> imu = {
@@ -95,9 +104,8 @@ TEST(IteratedEkf, SeatsMapOnFirstScan) {
 
 TEST(IteratedEkf, StaticSensorHoldsPose) {
   const auto world = room_points();
-  IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
-                  PlaneAssocParams{}, origin_state(),
-                  ErrorMatrix::Identity() * 0.01);
+  IteratedEkf ekf(test_noise(), IekfConfig{}, PlaneAssocParams{},
+                  origin_state(), nav_prior(0.01));
 
   const Sophus::SE3d T_true;  // identity, sensor does not move
   const auto scan = scan_from(world, T_true);
@@ -123,8 +131,8 @@ TEST(IteratedEkf, ConstantVelocityTracksTruth) {
   // pull it back and recover the velocity through the covariance cross-terms.
   State x0 = origin_state();
   x0.v = Vec3(0.1, 0.0, 0.0);
-  IteratedEkf ekf(test_noise(), Sophus::SE3d(), IekfConfig{},
-                  PlaneAssocParams{}, x0, ErrorMatrix::Identity() * 0.1);
+  IteratedEkf ekf(test_noise(), IekfConfig{}, PlaneAssocParams{}, x0,
+                  nav_prior(0.1));
 
   const Vec3 gyro = Vec3::Zero();
   const Vec3 accel(0, 0, 9.81);  // constant-velocity specific force

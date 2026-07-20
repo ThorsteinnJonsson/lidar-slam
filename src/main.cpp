@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <numbers>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -61,6 +62,16 @@ int main() {
   // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
   // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
   constexpr std::string_view kSequence = "eee_03";
+
+  // Estimate the LiDAR-IMU extrinsic online (adds it to the filtered state).
+  // Off by default, matching the NTU VIRAL FAST-LIO2 config
+  // (extrinsic_est_en: false). Measured on eee_03: enabling it costs ATE
+  // (0.1119 -> 0.1137 even with a tight 0.2 deg / 2 mm seed), and the extrinsic
+  // walks out to ~2-4 sigma of whatever seed it is given instead of converging
+  // on a fixed value -- the signature of a direction that absorbs registration
+  // misfit rather than one the data observes. Needs real motion excitation to
+  // pay off. Hard-coded for now (later: config file).
+  constexpr bool kEnableExtrinsicEstimation = false;
   const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
 
   // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and
@@ -141,7 +152,11 @@ int main() {
 
       const auto traj =
           build_scan_trajectory(imu_buffer, t_start, t_end, ekf->state());
-      const PointCloud undist = deskew(cloud, traj, T_imu_lidar, t_end);
+      // Deskew with the current extrinsic estimate (seeded from YAML, refined
+      // online) so it stays consistent with the update below.
+      const Sophus::SE3d T_il_est(ekf->state().R_imu_lidar,
+                                  ekf->state().p_imu_lidar);
+      const PointCloud undist = deskew(cloud, traj, T_il_est, t_end);
       const PointCloud filtered = voxel_downsample(undist, kVoxelLeaf);
 
       const auto imu_window = imu_buffer.get_between(last_ref, t_end);
@@ -179,7 +194,8 @@ int main() {
       // to world with the post-update pose; log the full map periodically since
       // it is large.
       const Sophus::SE3d T_wi(ekf->state().R, ekf->state().p);
-      const Sophus::SE3d T_wl = T_wi * T_imu_lidar;
+      const Sophus::SE3d T_wl = T_wi * Sophus::SE3d(ekf->state().R_imu_lidar,
+                                                    ekf->state().p_imu_lidar);
       std::vector<Eigen::Vector3f> scan_world;
       scan_world.reserve(scan_lidar.size());
       for (const Eigen::Vector3f& p_l : scan_lidar) {
@@ -225,8 +241,19 @@ int main() {
                 // for the takeoff gravity tilt (see NoiseParams above).
                 IekfConfig ekf_cfg;
                 ekf_cfg.sigma = 0.0316;
-                ekf.emplace(noise, T_imu_lidar, ekf_cfg, PlaneAssocParams{},
-                            init.state, init.cov);
+                // Seed the extrinsic from the YAML calibration.
+                State x0 = init.state;
+                x0.R_imu_lidar = T_imu_lidar.so3();
+                x0.p_imu_lidar = T_imu_lidar.translation();
+                ErrorMatrix P0 = init.cov;
+                if (!kEnableExtrinsicEstimation) {
+                  // Pin the extrinsic with a negligible prior variance: the
+                  // update cannot move it and there is no process noise to
+                  // reinflate it, so the filter behaves as if the calibration
+                  // were fixed. Non-zero to keep P invertible.
+                  P0.diagonal().segment<6>(kIdxExtRot).setConstant(1e-12);
+                }
+                ekf.emplace(noise, ekf_cfg, PlaneAssocParams{}, x0, P0);
                 last_ref = init_imu.back().stamp.to_nsec();
               } else {
                 // Platform is moving: slide the window and keep waiting for a
@@ -264,6 +291,20 @@ int main() {
         100.0 * static_cast<double>(converged_scans) /
             static_cast<double>(scans),
         static_cast<double>(total_iters) / static_cast<double>(scans));
+    // How far the online extrinsic estimate drifted from the YAML seed. Large
+    // translation drift suggests it is being driven by unobservable directions
+    // rather than genuine miscalibration.
+    const Eigen::Vector3d d_rot =
+        (T_imu_lidar.so3().inverse() * ekf->state().R_imu_lidar).log();
+    const Eigen::Vector3d d_trans =
+        ekf->state().p_imu_lidar - T_imu_lidar.translation();
+    spdlog::info(
+        "Extrinsic: drot {:.3f} deg | dtrans {:.4f} m | p_il [{:+.4f}, "
+        "{:+.4f}, {:+.4f}] (seed [{:+.4f}, {:+.4f}, {:+.4f}])",
+        d_rot.norm() * 180.0 / std::numbers::pi, d_trans.norm(),
+        ekf->state().p_imu_lidar.x(), ekf->state().p_imu_lidar.y(),
+        ekf->state().p_imu_lidar.z(), T_imu_lidar.translation().x(),
+        T_imu_lidar.translation().y(), T_imu_lidar.translation().z());
   }
   return 0;
 }

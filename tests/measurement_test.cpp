@@ -22,11 +22,16 @@ State sample_state() {
   s.b_g = Vec3(0.01, -0.02, 0.03);
   s.b_a = Vec3(0.1, 0.2, -0.1);
   s.gravity = Vec3(0.05, -0.05, -9.8);
+  // A non-trivial extrinsic, so the finite difference exercises the extrinsic
+  // Jacobian blocks rather than a degenerate identity.
+  s.R_imu_lidar = Sophus::SO3d::exp(Vec3(0.02, -0.05, 0.03));
+  s.p_imu_lidar = Vec3(-0.05, 0.01, 0.06);
   return s;
 }
 
-PlaneMatch make_match(const Vec3f& p_I, const Vec3f& normal, float residual) {
-  return PlaneMatch{p_I, normal.normalized(), residual};
+// Matches are associated in the lidar frame, so `point` is p_L.
+PlaneMatch make_match(const Vec3f& p_L, const Vec3f& normal, float residual) {
+  return PlaneMatch{p_L, normal.normalized(), residual};
 }
 
 std::vector<PlaneMatch> sample_matches() {
@@ -38,10 +43,13 @@ std::vector<PlaneMatch> sample_matches() {
   };
 }
 
-// Residual h = n.(R p_I + p) + d at state `s` for the given match and offset d.
+// Residual h = n.(R (R_ext p_L + p_ext) + p) + d at state `s`, for the given
+// match and plane offset d. The extrinsic is part of the state, so perturbing
+// its blocks moves the residual too.
 double residual_at(const State& s, const PlaneMatch& m, double d) {
-  const Vec3 p_I = m.point.cast<double>();
+  const Vec3 p_L = m.point.cast<double>();
   const Vec3 n = m.normal.cast<double>();
+  const Vec3 p_I = s.R_imu_lidar * p_L + s.p_imu_lidar;
   const Vec3 p_W = s.R * p_I + s.p;
   return n.dot(p_W) + d;
 }
@@ -76,14 +84,16 @@ TEST(Measurement, JacobianMatchesFiniteDifference) {
   }
 }
 
-TEST(Measurement, OnlyRotationAndPositionBlocksAreNonzero) {
+TEST(Measurement, OnlyPoseAndExtrinsicBlocksAreNonzero) {
   const State s = sample_state();
   const auto lin = build_measurement(s, sample_matches());
 
-  // Columns 6..16 (velocity, biases, gravity) carry no information.
-  EXPECT_TRUE(lin.H.rightCols<11>().isZero(0.0));
-  // Rotation and position blocks are not all zero.
+  // Velocity, biases, and gravity (columns 6..16) carry no information from a
+  // single frame; they are corrected only through covariance cross-terms.
+  EXPECT_TRUE(lin.H.middleCols(kIdxVel, kIdxExtRot - kIdxVel).isZero(0.0));
+  // Pose (rotation + position) and extrinsic blocks are not all zero.
   EXPECT_GT(lin.H.leftCols<6>().cwiseAbs().sum(), 0.0);
+  EXPECT_GT(lin.H.rightCols<6>().cwiseAbs().sum(), 0.0);
 }
 
 TEST(Measurement, ResidualVectorEchoesMatchResiduals) {
