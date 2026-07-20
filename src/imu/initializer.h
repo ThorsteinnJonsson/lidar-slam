@@ -45,6 +45,15 @@ struct InitParams {
   // starving the real (small, nonzero) bias.
   double bias_accel_std{0.01};
   double gravity_std{1e-2};
+  // LiDAR-IMU extrinsic seed uncertainty. Deliberately tight: the YAML value is
+  // a mechanical calibration good to about a millimeter, and from a single
+  // frame the extrinsic is degenerate with the pose (δp_ext and δp shift the
+  // world point identically), so only platform motion separates them. A loose
+  // seed (1 deg / 1 cm) let the extrinsic drift ~3-4 sigma on eee_03 and absorb
+  // registration misfit, costing ~8% ATE. Keep it pinned enough that the filter
+  // can only make micro-refinements.
+  double ext_rot_std{0.0035};   // ~0.2 deg
+  double ext_trans_std{0.002};  // 2 mm
 };
 
 struct InitResult {

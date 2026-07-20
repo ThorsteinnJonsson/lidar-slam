@@ -2,8 +2,7 @@
 
 #include "estimator/measurement.h"
 
-IteratedEkf::IteratedEkf(const NoiseParams& noise,
-                         const Sophus::SE3d& T_imu_lidar, const IekfConfig& cfg,
+IteratedEkf::IteratedEkf(const NoiseParams& noise, const IekfConfig& cfg,
                          const PlaneAssocParams& assoc, const State& x0,
                          const ErrorMatrix& P0,
                          const LocalMapParams& map_params)
@@ -11,7 +10,6 @@ IteratedEkf::IteratedEkf(const NoiseParams& noise,
       x_(x0),
       P_(P0),
       propagator_(noise),
-      T_imu_lidar_(T_imu_lidar),
       cfg_(cfg),
       assoc_(assoc) {}
 
@@ -25,21 +23,21 @@ EkfResult IteratedEkf::process_scan(
         propagator_.propagate_with_covariance(x_, P_, imu[i], imu[i + 1]);
   }
 
-  // Lidar points into the IMU frame once; the extrinsic is fixed, so only the
-  // pose changes between iterations.
-  std::vector<Eigen::Vector3f> points_imu;
-  points_imu.reserve(points_lidar.size());
-  const Sophus::SE3f T_il = T_imu_lidar_.cast<float>();
-  for (const Eigen::Vector3f& p_L : points_lidar) {
-    points_imu.push_back(T_il * p_L);
-  }
+  // World-from-lidar for a given state: T_WL = T_WI . T_imu_lidar. The
+  // extrinsic is part of the state now, so this changes between iterations.
+  const auto world_from_lidar = [](const State& x) {
+    return Sophus::SE3d(x.R * x.R_imu_lidar, x.R * x.p_imu_lidar + x.p);
+  };
 
   // ── Update: re-associate against the live iterate each iteration
   // ────────────
+  // Association runs in the LIDAR frame (raw points + T_world_lidar), so the
+  // points need no per-iteration transform and each PlaneMatch reports p_L,
+  // which the extrinsic Jacobian blocks need directly.
   const MeasurementFn measure = [&](const State& x) {
-    const Sophus::SE3f T_WI(x.R.cast<float>(), x.p.cast<float>());
+    const Sophus::SE3f T_WL = world_from_lidar(x).cast<float>();
     return build_measurement(
-        x, associate_planes(map_.tree(), points_imu, T_WI, assoc_));
+        x, associate_planes(map_.tree(), points_lidar, T_WL, assoc_));
   };
   const EkfResult result = iterated_update(x_, P_, measure, cfg_);
   x_ = result.state;
@@ -47,11 +45,11 @@ EkfResult IteratedEkf::process_scan(
 
   // ── Map: fold in the registered scan, then bound to the sliding window
   // ──────
-  const Sophus::SE3d T_WI(x_.R, x_.p);
+  const Sophus::SE3d T_WL = world_from_lidar(x_);
   std::vector<Eigen::Vector3f> world;
-  world.reserve(points_imu.size());
-  for (const Eigen::Vector3f& p_I : points_imu) {
-    world.push_back((T_WI * p_I.cast<double>()).cast<float>());
+  world.reserve(points_lidar.size());
+  for (const Eigen::Vector3f& p_L : points_lidar) {
+    world.push_back((T_WL * p_L.cast<double>()).cast<float>());
   }
   map_.insert(std::move(world));
   map_.recenter(x_.p.cast<float>());

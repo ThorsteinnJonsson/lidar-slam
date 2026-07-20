@@ -23,10 +23,9 @@
 // bound are delegated to LocalMap.
 class IteratedEkf {
  public:
-  IteratedEkf(const NoiseParams& noise, const Sophus::SE3d& T_imu_lidar,
-              const IekfConfig& cfg, const PlaneAssocParams& assoc,
-              const State& x0, const ErrorMatrix& P0,
-              const LocalMapParams& map_params = {});
+    IteratedEkf(const NoiseParams& noise, const IekfConfig& cfg,
+              const PlaneAssocParams& assoc, const State& x0,
+              const ErrorMatrix& P0, const LocalMapParams& map_params = {});
 
   // Process one scan. `imu` spans [previous scan ref, this scan ref] with
   // interpolated endpoints (as ImuBuffer::get_between returns); the state is
@@ -46,7 +45,6 @@ class IteratedEkf {
   State x_;
   ErrorMatrix P_;
   ImuPropagator propagator_;
-  Sophus::SE3d T_imu_lidar_;
   IekfConfig cfg_;
   PlaneAssocParams assoc_;
 };
