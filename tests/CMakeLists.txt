@@ -13,7 +13,9 @@ add_executable(unit_tests
     map_crop_test.cpp
     local_map_test.cpp
     ros_deserializer_test.cpp
+    params_test.cpp
     ${CMAKE_SOURCE_DIR}/src/io/ros_deserializer.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/params.cpp
     ${CMAKE_SOURCE_DIR}/src/map/ikd_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/map/association.cpp
     ${CMAKE_SOURCE_DIR}/src/map/local_map.cpp
@@ -38,6 +40,7 @@ target_link_libraries(unit_tests PRIVATE
     Eigen3::Eigen
     Sophus::Sophus
     nanoflann::nanoflann
+    yaml-cpp::yaml-cpp
 )
 
 # Register each TEST() with CTest so `ctest` discovers them individually.

@@ -1,0 +1,49 @@
+lidar_time_offset_sec: -0.1
+
+preprocess:
+  scan_voxel_leaf: 0.5
+
+init:
+  imu_count: 200
+  gravity_magnitude: 9.78
+  max_accel_var: 0.05
+  max_gyro_var: 0.01
+  theta_std: 0.017
+  pos_std: 0.001
+  vel_std: 0.01
+  bias_gyro_std: 0.001
+  bias_accel_std: 0.01
+  gravity_std: 0.01
+  ext_rot_std: 0.0035
+  ext_trans_std: 0.002
+
+imu_noise:
+  gyro_noise_std: 0.3162
+  accel_noise_std: 0.3162
+  gyro_rw_std: 0.01
+  accel_rw_std: 0.01
+
+iekf:
+  sigma: 0.0316
+  max_iterations: 5
+  convergence_tol: 0.001
+  reject_outliers: true
+  outlier_chi2: 3.841
+
+association:
+  num_neighbors: 5
+  max_neighbor_dist2: 5.0
+  max_plane_dist: 0.1
+  min_quality: 0.9
+
+map:
+  voxel_on_insert: true
+  voxel_leaf: 0.1
+  crop:
+    enabled: true
+    sensor_range: 300.0
+    margin_factor: 1.5
+    keep_factor: 2.0
+
+estimator:
+  enable_extrinsic_estimation: false

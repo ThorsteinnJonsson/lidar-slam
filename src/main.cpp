@@ -16,6 +16,7 @@
 #include "imu/propagator.h"
 #include "io/bag_reader.h"
 #include "io/calibration.h"
+#include "io/params.h"
 #include "io/ros_deserializer.h"
 #include "map/association.h"
 #include "preprocess/deskew.h"
@@ -26,15 +27,8 @@
 
 namespace {
 
-constexpr size_t kInitImuCount = 200;  // static IMU samples used to initialize
-constexpr double kVoxelLeaf = 0.5;     // map/scan downsample leaf size (m)
-
-// Lidar-to-IMU clock offset (seconds). The OS1 lidar stamps its points ahead
-// of the IMU clock on NTU VIRAL;
-// TODO: promote to a per-dataset calibration parameter instead of hard-coding.
-constexpr double kLidarTimeOffsetSec = -0.1;
-constexpr int64_t kLidarTimeOffsetNs =
-    static_cast<int64_t>(kLidarTimeOffsetSec * 1e9);
+// Tunable parameters live in this file; see config/README.md.
+constexpr const char* kParamsPath = "config/params.yaml";
 
 // Scan time window [t_start, t_end] from the per-point time offsets.
 std::optional<std::pair<uint64_t, uint64_t>> scan_window(const PointCloud& c) {
@@ -59,20 +53,17 @@ int main() {
   spdlog::flush_on(spdlog::level::info);  // flush progress as it is logged
   spdlog::info("lidar-slam initializing...");
 
+  std::vector<std::string> param_warnings;
+  const Params params = load_params(kParamsPath, &param_warnings);
+  for (const std::string& w : param_warnings) spdlog::warn("{}", w);
+
   // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
   // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
   constexpr std::string_view kSequence = "eee_03";
-
-  // Estimate the LiDAR-IMU extrinsic online (adds it to the filtered state).
-  // Off by default, matching the NTU VIRAL FAST-LIO2 config
-  // (extrinsic_est_en: false). Measured on eee_03: enabling it costs ATE
-  // (0.1119 -> 0.1137 even with a tight 0.2 deg / 2 mm seed), and the extrinsic
-  // walks out to ~2-4 sigma of whatever seed it is given instead of converging
-  // on a fixed value -- the signature of a direction that absorbs registration
-  // misfit rather than one the data observes. Needs real motion excitation to
-  // pay off. Hard-coded for now (later: config file).
-  constexpr bool kEnableExtrinsicEstimation = false;
   const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
+
+  const int64_t lidar_time_offset_ns =
+      static_cast<int64_t>(params.lidar_time_offset_sec * 1e9);
 
   // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and
   // body-IMU extrinsic are constant ("/imu/imu", identity), and the noise is
@@ -93,21 +84,6 @@ int main() {
 
   spdlog::info("IMU  topic: {}, LiDAR topic: {}, GT topic: {}", imu_cal.topic,
                lidar_cal.topic, prism_cal.topic);
-
-  // FAST-LIO2 tuning parity: deliberately LOOSE process noise (gyr_cov/acc_cov
-  // 0.1, b_gyr_cov/b_acc_cov 1e-4, stored as std = sqrt(cov)) instead of the
-  // datasheet values from imu_v100.yaml. The datasheet Q makes the filter
-  // overconfident: the covariance stays so tight that the takeoff registration
-  // misfit gets absorbed as attitude/gravity error and then locks in as a
-  // permanent ~5 deg map tilt. Loose Q lets the bias and attitude keep
-  // re-adapting, so the same transient heals: final gravity tilt 5.2 -> 3.6 deg
-  // and ATE 0.32 -> 0.11 on eee_03.
-  // TODO: bisect which of the loosened terms carries the improvement, and
-  // consider scaling the datasheet values instead of replacing them.
-  const NoiseParams noise{.gyro_noise_std = 0.3162,   // sqrt(0.1)
-                          .accel_noise_std = 0.3162,  // sqrt(0.1)
-                          .gyro_rw_std = 0.01,        // sqrt(1e-4)
-                          .accel_rw_std = 0.01};      // sqrt(1e-4)
 
   BagReader reader(dataset + "/" + std::string(kSequence) + ".bag");
 
@@ -157,7 +133,8 @@ int main() {
       const Sophus::SE3d T_il_est(ekf->state().R_imu_lidar,
                                   ekf->state().p_imu_lidar);
       const PointCloud undist = deskew(cloud, traj, T_il_est, t_end);
-      const PointCloud filtered = voxel_downsample(undist, kVoxelLeaf);
+      const PointCloud filtered =
+          voxel_downsample(undist, params.scan_voxel_leaf);
 
       const auto imu_window = imu_buffer.get_between(last_ref, t_end);
       const std::vector<Eigen::Vector3f> scan_lidar = to_points(filtered);
@@ -227,33 +204,28 @@ int main() {
           imu_buffer.push(m);
           if (!ekf) {
             init_imu.push_back(m);
-            if (init_imu.size() >= kInitImuCount) {
-              const InitResult init = initialize_static(init_imu, InitParams{});
+            if (init_imu.size() >= params.init_imu_count) {
+              const InitResult init = initialize_static(init_imu, params.init);
               if (init.ok) {
                 spdlog::info(
                     "Static init OK: |accel| = {:.4f} m/s^2, accel_var = "
                     "{:.2e}, gyro_var = {:.2e}, b_g = [{:.2e}, {:.2e}, {:.2e}]",
                     init.accel_mean_norm, init.max_accel_var, init.max_gyro_var,
                     init.state.b_g.x(), init.state.b_g.y(), init.state.b_g.z());
-                // FAST-LIO2 tuning parity: lidar point noise sigma =
-                // sqrt(LASER_POINT_COV = 1e-3) ~ 0.0316 m, 10x less information
-                // per point than the 0.01 default. Part of the loose-tuning fix
-                // for the takeoff gravity tilt (see NoiseParams above).
-                IekfConfig ekf_cfg;
-                ekf_cfg.sigma = 0.0316;
                 // Seed the extrinsic from the YAML calibration.
                 State x0 = init.state;
                 x0.R_imu_lidar = T_imu_lidar.so3();
                 x0.p_imu_lidar = T_imu_lidar.translation();
                 ErrorMatrix P0 = init.cov;
-                if (!kEnableExtrinsicEstimation) {
+                if (!params.enable_extrinsic_estimation) {
                   // Pin the extrinsic with a negligible prior variance: the
                   // update cannot move it and there is no process noise to
                   // reinflate it, so the filter behaves as if the calibration
                   // were fixed. Non-zero to keep P invertible.
                   P0.diagonal().segment<6>(kIdxExtRot).setConstant(1e-12);
                 }
-                ekf.emplace(noise, ekf_cfg, PlaneAssocParams{}, x0, P0);
+                ekf.emplace(params.noise, params.iekf, params.assoc, x0, P0,
+                            params.map);
                 last_ref = init_imu.back().stamp.to_nsec();
               } else {
                 // Platform is moving: slide the window and keep waiting for a
@@ -269,7 +241,7 @@ int main() {
           // offset, so scan_window, trajectory, deskew, and the IMU window all
           // move together.
           pc.stamp = Timestamp::from_nsec(static_cast<uint64_t>(
-              static_cast<int64_t>(pc.stamp.to_nsec()) + kLidarTimeOffsetNs));
+              static_cast<int64_t>(pc.stamp.to_nsec()) + lidar_time_offset_ns));
           pending.push_back(std::move(pc));
         }
         if (ekf) drain();
