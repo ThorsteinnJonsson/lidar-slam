@@ -62,6 +62,16 @@ int main() {
   // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
   // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
   constexpr std::string_view kSequence = "eee_03";
+
+  // Estimate the LiDAR-IMU extrinsic online (adds it to the filtered state).
+  // Off by default, matching the NTU VIRAL FAST-LIO2 config
+  // (extrinsic_est_en: false). Measured on eee_03: enabling it costs ATE
+  // (0.1119 -> 0.1137 even with a tight 0.2 deg / 2 mm seed), and the extrinsic
+  // walks out to ~2-4 sigma of whatever seed it is given instead of converging
+  // on a fixed value -- the signature of a direction that absorbs registration
+  // misfit rather than one the data observes. Needs real motion excitation to
+  // pay off. Hard-coded for now (later: config file).
+  constexpr bool kEnableExtrinsicEstimation = false;
   const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
 
   // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and
@@ -231,12 +241,19 @@ int main() {
                 // for the takeoff gravity tilt (see NoiseParams above).
                 IekfConfig ekf_cfg;
                 ekf_cfg.sigma = 0.0316;
-                // Seed the online-estimated extrinsic from the YAML
-                // calibration; the filter refines it from here.
+                // Seed the extrinsic from the YAML calibration.
                 State x0 = init.state;
                 x0.R_imu_lidar = T_imu_lidar.so3();
                 x0.p_imu_lidar = T_imu_lidar.translation();
-                ekf.emplace(noise, ekf_cfg, PlaneAssocParams{}, x0, init.cov);
+                ErrorMatrix P0 = init.cov;
+                if (!kEnableExtrinsicEstimation) {
+                  // Pin the extrinsic with a negligible prior variance: the
+                  // update cannot move it and there is no process noise to
+                  // reinflate it, so the filter behaves as if the calibration
+                  // were fixed. Non-zero to keep P invertible.
+                  P0.diagonal().segment<6>(kIdxExtRot).setConstant(1e-12);
+                }
+                ekf.emplace(noise, ekf_cfg, PlaneAssocParams{}, x0, P0);
                 last_ref = init_imu.back().stamp.to_nsec();
               } else {
                 // Platform is moving: slide the window and keep waiting for a
