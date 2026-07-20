@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include <CLI/CLI.hpp>
 #include <algorithm>
 #include <deque>
 #include <filesystem>
@@ -7,7 +8,6 @@
 #include <iomanip>
 #include <numbers>
 #include <optional>
-#include <string_view>
 #include <vector>
 
 #include "estimator/iterated_ekf.h"
@@ -26,9 +26,6 @@
 #include "viz/visualizer.h"
 
 namespace {
-
-// Tunable parameters live in this file; see config/README.md.
-constexpr const char* kParamsPath = "config/params.yaml";
 
 // Scan time window [t_start, t_end] from the per-point time offsets.
 std::optional<std::pair<uint64_t, uint64_t>> scan_window(const PointCloud& c) {
@@ -49,18 +46,40 @@ std::vector<Eigen::Vector3f> to_points(const PointCloud& c) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  CLI::App app{"LiDAR-inertial SLAM (FAST-LIO2 style)"};
+  std::string format;
+  std::filesystem::path sequence_dir;
+  std::filesystem::path params_path;
+  std::filesystem::path output_dir;
+  app.add_option("--format", format, "Dataset format")
+      ->required()
+      ->check(CLI::IsMember({"NTU_VIRAL"}));
+  app.add_option("--sequence", sequence_dir, "Path to the sequence directory")
+      ->required()
+      ->check(CLI::ExistingDirectory);
+  app.add_option("--params", params_path, "Path to the parameter YAML")
+      ->required()
+      ->check(CLI::ExistingFile);
+  app.add_option("--output", output_dir,
+                 "Directory for TUM output (default: evaluation/<sequence>)");
+  CLI11_PARSE(app, argc, argv);
+
   spdlog::flush_on(spdlog::level::info);  // flush progress as it is logged
   spdlog::info("lidar-slam initializing...");
 
   std::vector<std::string> param_warnings;
-  const Params params = load_params(kParamsPath, &param_warnings);
+  const Params params = load_params(params_path, &param_warnings);
   for (const std::string& w : param_warnings) spdlog::warn("{}", w);
 
-  // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
-  // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
-  constexpr std::string_view kSequence = "eee_03";
-  const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
+  // The sequence directory name also names the bag inside it and the default
+  // output directory.
+  const std::string sequence = sequence_dir.filename().string();
+  const std::string dataset = sequence_dir.string();
+  if (output_dir.empty())
+    output_dir = std::filesystem::path("evaluation") / sequence;
+  spdlog::info("Format: {}, sequence: {}, params: {}", format, dataset,
+               params_path.string());
 
   const int64_t lidar_time_offset_ns =
       static_cast<int64_t>(params.lidar_time_offset_sec * 1e9);
@@ -85,7 +104,7 @@ int main() {
   spdlog::info("IMU  topic: {}, LiDAR topic: {}, GT topic: {}", imu_cal.topic,
                lidar_cal.topic, prism_cal.topic);
 
-  BagReader reader(dataset + "/" + std::string(kSequence) + ".bag");
+  BagReader reader(dataset + "/" + sequence + ".bag");
 
   ImuBuffer imu_buffer;
   std::deque<PointCloud> pending;        // clouds awaiting IMU coverage
@@ -98,9 +117,7 @@ int main() {
   size_t gt_msgs = 0;
 
   // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
-  // Per-sequence subdir so running another sequence does not clobber the last.
-  const std::filesystem::path eval_dir =
-      std::filesystem::path("evaluation") / std::string(kSequence);
+  const std::filesystem::path& eval_dir = output_dir;
   std::filesystem::create_directories(eval_dir);
   std::ofstream traj_out(eval_dir / "trajectory.tum");  // IMU pose
   std::ofstream prism_out(eval_dir / "prism.tum");      // estimate at the prism

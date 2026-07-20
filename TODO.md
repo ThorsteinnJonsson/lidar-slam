@@ -23,11 +23,13 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 
 ## Open
 
-- [ ] Promote `kSequence` to a command-line argument.
+- [ ] Dataset loader interface, when a second format actually lands. `--format` validates
+      today but selects nothing.
 
 ## Done, with findings worth keeping
 
-- [x] Tunables in `config/params.yaml` (see `config/README.md`). Dataset selection stays in `main.cpp`.
+- [x] CLI11 arguments: `--format`, `--sequence`, `--params` (all required), `--output`.
+- [x] Tunables in `config/ntu_viral.yaml` (see `config/README.md`).
 - [x] Online LiDAR↔IMU extrinsic estimation (17→23 DOF), behind `enable_extrinsic_estimation`,
       default off. Costs ATE on `eee_03` (0.1119 → 0.1137 even at a 0.2°/2 mm seed) and the extrinsic
       walks to ~2-4σ of whatever seed it gets instead of converging: it absorbs registration misfit
