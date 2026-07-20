@@ -60,7 +60,7 @@ int main() {
 
   // NTU VIRAL sequence to run. Hard-coded for now (later: command-line arg).
   // Options: eee_02 | eee_03 | rtp_03 | tnp_01.
-  constexpr std::string_view kSequence = "rtp_03";
+  constexpr std::string_view kSequence = "eee_03";
   const std::string dataset = "datasets/ntu_viral/" + std::string(kSequence);
 
   // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and

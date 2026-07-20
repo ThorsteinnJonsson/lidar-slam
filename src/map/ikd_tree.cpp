@@ -1,6 +1,9 @@
 #include "map/ikd_tree.h"
 
 #include <algorithm>
+#include <chrono>
+#include <future>
+#include <utility>
 
 namespace {
 
@@ -32,6 +35,11 @@ bool point_in_box(const Eigen::Vector3f& p, const Eigen::Vector3f& lo,
 constexpr float kAlphaBalance = 0.7f;
 constexpr float kAlphaDelete = 0.5f;
 constexpr int kMinRebuildSize = 10;
+
+// Subtrees at or above this size rebuild on a background thread (the paper's
+// N_max); smaller ones rebuild synchronously, where thread hand-off would cost
+// more than the rebuild itself.
+constexpr int kParallelRebuildSize = 1500;
 
 }  // namespace
 
@@ -116,6 +124,72 @@ void IkdTree::rebuild(std::unique_ptr<Node>& slot) {
   slot = build_range(pts.data(), pts.data() + pts.size());
 }
 
+bool IkdTree::maybe_rebuild(std::unique_ptr<Node>& slot) {
+  // Only one rebuild in flight at a time: while a background rebuild runs,
+  // defer every other rebuild (sync or async). This keeps the frozen subtree
+  // and its ancestors untouched by any restructuring until the swap. The tree
+  // just stays slightly unbalanced for the (brief) window until finalize.
+  if (frozen_slot_ != nullptr) return false;
+  if (!needs_rebuild(slot.get())) return false;
+  if (!replaying_ && slot->treesize >= kParallelRebuildSize) {
+    start_async_rebuild(slot);
+    return true;
+  }
+  rebuild(slot);
+  return false;
+}
+
+void IkdTree::start_async_rebuild(std::unique_ptr<Node>& slot) {
+  // Snapshot the frozen subtree's live points on this thread, then let a worker
+  // build a balanced replacement from the copy alone (it touches no tree node,
+  // so there is no shared mutable state with the main thread).
+  std::vector<Eigen::Vector3f> pts;
+  pts.reserve(slot->treesize);
+  flatten(slot.get(), pts);
+
+  frozen_slot_ = &slot;
+  slot->under_rebuild = true;
+  capturing_ = true;
+  frozen_ancestors_.clear();
+  pending_inserts_.clear();
+  ++background_rebuilds_;
+
+  rebuild_future_ =
+      std::async(std::launch::async, [pts = std::move(pts)]() mutable {
+        return build_range(pts.data(), pts.data() + pts.size());
+      });
+}
+
+void IkdTree::try_finalize_rebuild(bool block) {
+  if (frozen_slot_ == nullptr) return;
+  if (!block && rebuild_future_.wait_for(std::chrono::seconds(0)) !=
+                    std::future_status::ready) {
+    return;  // worker still building; the frozen subtree keeps serving queries
+  }
+  std::unique_ptr<Node> rebuilt = rebuild_future_.get();
+
+  // The worker built from a stale snapshot; the frozen subtree has since taken
+  // logged mutations in place. Replay them onto the rebuilt copy so it matches
+  // the current live content, then swap. Clear frozen state first so replay
+  // runs as ordinary (synchronous) mutations.
+  std::unique_ptr<Node>* slot = frozen_slot_;
+  frozen_slot_ = nullptr;
+  capturing_ = false;
+  replaying_ = true;
+  for (const Eigen::Vector3f& p : pending_inserts_) insert_at(rebuilt, p);
+  replaying_ = false;
+  pending_inserts_.clear();
+
+  *slot = std::move(rebuilt);
+  // The swapped subtree has a different treesize/box/invalid_num than the
+  // frozen one, so refresh the cached attributes of every ancestor up to the
+  // root.
+  for (Node* a : frozen_ancestors_) pull_up(a);
+  frozen_ancestors_.clear();
+}
+
+void IkdTree::finish_pending_rebuild() { try_finalize_rebuild(/*block=*/true); }
+
 std::unique_ptr<IkdTree::Node> IkdTree::build_range(Eigen::Vector3f* first,
                                                     Eigen::Vector3f* last) {
   if (first >= last) return nullptr;
@@ -164,6 +238,10 @@ void IkdTree::insert_at(std::unique_ptr<Node>& slot,
     pull_up(slot.get());
     return;
   }
+  // Entering a subtree that a worker is rebuilding: log the point for replay
+  // onto the rebuilt copy, then apply it here as usual so queries stay correct.
+  // Only the frozen root carries the flag, so this logs exactly once per op.
+  if (slot->under_rebuild) pending_inserts_.push_back(point);
   // Propagate any pending subtree-wide deletion before descending, so the new
   // leaf lands live rather than under a stale deleted label.
   push_down(slot.get());
@@ -173,13 +251,24 @@ void IkdTree::insert_at(std::unique_ptr<Node>& slot,
     insert_at(slot->right, point);
   }
   pull_up(slot.get());
-  if (needs_rebuild(slot.get())) rebuild(slot);
+  const bool started = maybe_rebuild(slot);
+  // On the unwind of the op that started a background rebuild, record each
+  // ancestor above the frozen node so finalize can refresh their cached stats.
+  if (capturing_ && !started) frozen_ancestors_.push_back(slot.get());
 }
 
-void IkdTree::insert(const Eigen::Vector3f& point) { insert_at(root_, point); }
+void IkdTree::insert(const Eigen::Vector3f& point) {
+  if (!suppress_auto_finalize_) try_finalize_rebuild(/*block=*/false);
+  insert_at(root_, point);
+  capturing_ = false;
+}
 
 void IkdTree::insert(const std::vector<Eigen::Vector3f>& points) {
-  for (const auto& p : points) insert_at(root_, p);
+  if (!suppress_auto_finalize_) try_finalize_rebuild(/*block=*/false);
+  for (const auto& p : points) {
+    insert_at(root_, p);
+    capturing_ = false;  // one ancestor-capture window per op
+  }
 }
 
 void IkdTree::remove_box_at(std::unique_ptr<Node>& slot,
@@ -214,12 +303,20 @@ void IkdTree::remove_box_at(std::unique_ptr<Node>& slot,
   remove_box_at(n->left, box_min, box_max);
   remove_box_at(n->right, box_min, box_max);
   pull_up(n);
-  if (needs_rebuild(n)) rebuild(slot);
+  const bool started = maybe_rebuild(slot);
+  if (capturing_ && !started) frozen_ancestors_.push_back(n);
 }
 
 void IkdTree::remove_box(const Eigen::Vector3f& box_min,
                          const Eigen::Vector3f& box_max) {
+  // Finish any in-flight rebuild first: a box-delete can lazily mark an
+  // ancestor of a frozen subtree deleted without descending into it, which the
+  // replay buffer (inserts only) could not reconcile. Blocking here keeps
+  // deletes off the frozen path entirely. Box-deletes are rare (map slides), so
+  // the wait is negligible.
+  try_finalize_rebuild(/*block=*/true);
   remove_box_at(root_, box_min, box_max);
+  capturing_ = false;
 }
 
 void IkdTree::search(const Node* node, const Eigen::Vector3f& query, size_t k,

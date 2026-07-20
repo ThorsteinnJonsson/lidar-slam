@@ -516,3 +516,157 @@ TEST(IkdTree, CollectExcludesBoxDeletedPoints) {
   // collect() must honor lazy deletion: only points outside the box remain.
   expect_same_cloud(tree.collect(), outside_box(pts, lo, hi));
 }
+
+// ── Parallel (background) rebuild ────────────────────────────────────────────
+//
+// A rebuild of a subtree at or above kParallelRebuildSize (1500) runs on a
+// worker thread. The frozen subtree stays live and correct meanwhile; the
+// rebuilt copy is swapped in on finalize. Correctness is invariant to rebuild
+// timing, so the map/query results must match brute force throughout.
+
+TEST(IkdTree, AsyncRebuildSortedInsertBalancesAndMatches) {
+  // Sorted inserts force large imbalance rebuilds, which cross the parallel
+  // threshold and run in the background.
+  IkdTree tree;
+  const int n = 5000;
+  std::vector<Vec3> model;
+  model.reserve(n);
+  for (int i = 0; i < n; ++i) {
+    const float f = static_cast<float>(i);
+    tree.insert(Vec3(f, f, f));
+    model.emplace_back(f, f, f);
+  }
+
+  ASSERT_GT(tree.background_rebuild_count(), 0u)
+      << "sorted inserts did not trigger a background rebuild";
+
+  tree.finish_pending_rebuild();  // land any still-pending rebuild
+
+  EXPECT_EQ(tree.size(), static_cast<size_t>(n));
+  EXPECT_TRUE(tree.validate());
+  const int log2n = static_cast<int>(std::ceil(std::log2(n)));
+  EXPECT_LT(tree.height(), 4 * log2n) << "height=" << tree.height();
+  expect_same_cloud(tree.collect(), model);
+}
+
+TEST(IkdTree, AsyncRebuildLogAndReplayDeterministic) {
+  // Hold a rebuild in flight (test seam) and insert into the frozen subtree so
+  // the log-and-replay path is exercised deterministically rather than by luck
+  // of thread timing.
+  IkdTree tree;
+  std::vector<Vec3> model;
+  tree.set_suppress_auto_finalize(true);
+
+  // Insert sorted points until a background rebuild starts; with finalize
+  // suppressed it then stays in flight.
+  float x = 0.0f;
+  while (tree.background_rebuild_count() == 0u && x < 20000.0f) {
+    tree.insert(Vec3(x, x, x));
+    model.emplace_back(x, x, x);
+    x += 1.0f;
+  }
+  ASSERT_GT(tree.background_rebuild_count(), 0u);
+
+  // Insert more while the rebuild is held: these land in the frozen subtree, so
+  // they are both applied in place (queries see them) and logged for replay.
+  std::mt19937 rng(4242);
+  std::uniform_real_distribution<float> coord(0.0f, x);
+  for (int i = 0; i < 200; ++i) {
+    const Vec3 p(coord(rng), coord(rng), coord(rng));
+    tree.insert(p);
+    model.push_back(p);
+  }
+
+  // Before the swap, the live (frozen) subtree already reflects everything.
+  EXPECT_EQ(tree.size(), model.size());
+  EXPECT_TRUE(tree.validate());
+  expect_same_cloud(tree.collect(), model);
+
+  // Finalize: the logged inserts are replayed onto the rebuilt copy and swapped
+  // in. Result must be unchanged.
+  tree.set_suppress_auto_finalize(false);
+  tree.finish_pending_rebuild();
+
+  EXPECT_EQ(tree.size(), model.size());
+  EXPECT_TRUE(tree.validate());
+  expect_same_cloud(tree.collect(), model);
+
+  std::mt19937 qrng(99);
+  std::uniform_real_distribution<float> q(0.0f, x);
+  for (int i = 0; i < 20; ++i) {
+    const Vec3 query(q(qrng), q(qrng), q(qrng));
+    std::vector<Vec3> gp;
+    std::vector<float> gd;
+    tree.knn(query, 5, gp, gd);
+    expect_dist2_match(gd, brute_force_dist2(model, query, 5));
+  }
+}
+
+TEST(IkdTree, AsyncRebuildInterleavedLargeScaleMatchesBruteForce) {
+  // Large-scale interleave of batch inserts and box-deletes, with periodic
+  // explicit finishes, so rebuilds cross the parallel threshold repeatedly and
+  // the swap + ancestor-refresh + block-on-delete paths all get exercised.
+  std::mt19937 rng(31337);
+  std::uniform_real_distribution<float> coord(-50.0f, 50.0f);
+
+  std::vector<Vec3> model = random_cloud(4000, /*seed=*/1);
+  IkdTree tree;
+  tree.build(model);
+
+  // A large sorted run (far from the box-delete zone below, which stays near
+  // the origin) forces a big imbalance rebuild across the parallel threshold,
+  // so the interleaving that follows exercises the async swap and
+  // ancestor-refresh.
+  std::vector<Vec3> spur;
+  for (int i = 0; i < 3000; ++i) {
+    const float f = 200.0f + 0.1f * static_cast<float>(i);
+    spur.emplace_back(f, f, f);
+  }
+  tree.insert(spur);
+  model.insert(model.end(), spur.begin(), spur.end());
+  ASSERT_GT(tree.background_rebuild_count(), 0u);
+
+  for (int round = 0; round < 16; ++round) {
+    if (round % 2 == 0) {
+      const auto add = random_cloud(600, /*seed=*/2000 + round);
+      tree.insert(add);
+      model.insert(model.end(), add.begin(), add.end());
+    } else {
+      const Vec3 c(coord(rng), coord(rng), coord(rng));
+      const Vec3 lo = c - Vec3(12, 12, 12);
+      const Vec3 hi = c + Vec3(12, 12, 12);
+      tree.remove_box(lo, hi);
+      std::vector<Vec3> kept;
+      for (const auto& p : model)
+        if (!in_box(p, lo, hi)) kept.push_back(p);
+      model = std::move(kept);
+    }
+    if (round % 3 == 0) tree.finish_pending_rebuild();
+
+    EXPECT_EQ(tree.size(), model.size()) << "round=" << round;
+    EXPECT_TRUE(tree.validate()) << "round=" << round;
+    for (int qi = 0; qi < 8; ++qi) {
+      const Vec3 query(coord(rng), coord(rng), coord(rng));
+      std::vector<Vec3> gp;
+      std::vector<float> gd;
+      tree.knn(query, 5, gp, gd);
+      expect_dist2_match(gd, brute_force_dist2(model, query, 5));
+    }
+  }
+
+  tree.finish_pending_rebuild();
+  EXPECT_TRUE(tree.validate());
+  expect_same_cloud(tree.collect(), model);
+  EXPECT_GT(tree.background_rebuild_count(), 0u)
+      << "interleaved run did not exercise the async path";
+}
+
+TEST(IkdTree, FinishPendingRebuildIsSafeWhenNonePending) {
+  IkdTree tree;
+  tree.build(random_cloud(300, /*seed=*/5));
+  // No rebuild in flight: finishing is a no-op and must not corrupt the tree.
+  tree.finish_pending_rebuild();
+  tree.finish_pending_rebuild();
+  EXPECT_TRUE(tree.validate());
+  EXPECT_EQ(tree.size(), 300u);
+}
