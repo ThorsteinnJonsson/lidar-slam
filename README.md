@@ -35,12 +35,18 @@ switching between them doesn't require a clean.
 
 | Option | | |
 | --- | --- | --- |
-| `--format` | required | Dataset layout. Only `NTU_VIRAL` so far. |
-| `--sequence` | required | Sequence directory. Its name also names the bag inside it (`eee_03/eee_03.bag`). |
-| `--params` | required | Tunable parameters, see [config/README.md](config/README.md). |
+| `--format` | required | Dataset format: `NTU_VIRAL`, `HILTI_22`, or `FAST_LIVO2`. |
+| `--sequence` | required | Sequence directory holding the `.bag`. |
+| `--params` | required | Tunable parameters, see [config/README.md](config/README.md). Use the matching per-format file. |
 | `--output` | optional | Output directory. Defaults to `evaluation/<sequence>`. |
 
 Run from the repository root: the paths above are relative.
+
+| Format | LiDAR | Params | Ground truth |
+| --- | --- | --- | --- |
+| `NTU_VIRAL` | Ouster OS1 | `config/ntu_viral.yaml` | in-bag Leica prism |
+| `HILTI_22` | Hesai PandarXT-32 | `config/hilti_22.yaml` | sparse control points (`.txt`) |
+| `FAST_LIVO2` | Livox Avia | `config/fast_livo2.yaml` | none |
 
 ## Evaluation
 

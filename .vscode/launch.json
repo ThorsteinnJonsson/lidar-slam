@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run lidar_slam (active preset)",
+      "name": "Run lidar_slam NTU VIRAL (active preset)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${command:cmake.launchTargetPath}",
@@ -10,6 +10,56 @@
         "--format", "NTU_VIRAL",
         "--sequence", "datasets/ntu_viral/eee_03",
         "--params", "config/ntu_viral.yaml"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "preLaunchTask": "cmake build active",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "Run lidar_slam HILTI (active preset)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--format", "HILTI_22",
+        "--sequence", "datasets/hilti-22/exp21",
+        "--params", "config/hilti_22.yaml"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "preLaunchTask": "cmake build active",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "Run lidar_slam FAST-LIVO2 (active preset)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--format", "FAST_LIVO2",
+        "--sequence", "datasets/fast-livo2",
+        "--params", "config/fast_livo2.yaml"
       ],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

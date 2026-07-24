@@ -140,6 +140,39 @@ Params load_params(const std::filesystem::path& path,
     collect_unknown(n, k, "estimator.", warnings);
   }
 
+  // LiDAR-to-IMU extrinsic: translation [x,y,z] (m) and rotation as either a
+  // unit quaternion [w,x,y,z] (4 values) or a row-major 3x3 matrix (9 values).
+  // Both optional; each defaults to identity.
+  if (const YAML::Node n = section("extrinsic")) {
+    std::set<std::string> k{"translation", "rotation"};
+    Eigen::Vector3d t = p.extrinsic.translation();
+    Sophus::SO3d rot = p.extrinsic.so3();
+    if (const YAML::Node tn = n["translation"]) {
+      const auto v = tn.as<std::vector<double>>();
+      if (v.size() != 3)
+        throw std::runtime_error(
+            "params: extrinsic.translation needs 3 values");
+      t = {v[0], v[1], v[2]};
+    }
+    if (const YAML::Node rn = n["rotation"]) {
+      const auto v = rn.as<std::vector<double>>();
+      if (v.size() == 4) {
+        rot = Sophus::SO3d(
+            Eigen::Quaterniond(v[0], v[1], v[2], v[3]).normalized());
+      } else if (v.size() == 9) {
+        Eigen::Matrix3d m;
+        m << v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8];
+        rot = Sophus::SO3d::fitToSO3(m);  // project to nearest rotation
+      } else {
+        throw std::runtime_error(
+            "params: extrinsic.rotation needs 4 values [w,x,y,z] or 9 "
+            "(row-major 3x3 matrix)");
+      }
+    }
+    p.extrinsic = Sophus::SE3d(rot, t);
+    collect_unknown(n, k, "extrinsic.", warnings);
+  }
+
   collect_unknown(root, top, "", warnings);
   return p;
 }

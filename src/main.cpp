@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <vector>
@@ -15,7 +16,7 @@
 #include "imu/initializer.h"
 #include "imu/propagator.h"
 #include "io/bag_reader.h"
-#include "io/calibration.h"
+#include "io/dataset_loader.h"
 #include "io/params.h"
 #include "io/ros_deserializer.h"
 #include "map/association.h"
@@ -54,7 +55,7 @@ int main(int argc, char** argv) {
   std::filesystem::path output_dir;
   app.add_option("--format", format, "Dataset format")
       ->required()
-      ->check(CLI::IsMember({"NTU_VIRAL"}));
+      ->check(CLI::IsMember({"NTU_VIRAL", "HILTI_22", "FAST_LIVO2"}));
   app.add_option("--sequence", sequence_dir, "Path to the sequence directory")
       ->required()
       ->check(CLI::ExistingDirectory);
@@ -84,27 +85,16 @@ int main(int argc, char** argv) {
   const int64_t lidar_time_offset_ns =
       static_cast<int64_t>(params.lidar_time_offset_sec * 1e9);
 
-  // rtp_03 and tnp_01 ship no imu_v100.yaml. Across NTU VIRAL the IMU topic and
-  // body-IMU extrinsic are constant ("/imu/imu", identity), and the noise is
-  // hard-coded below rather than read from the file, so a default calibration
-  // covers the sequences that lack the yaml.
-  const std::filesystem::path imu_yaml = dataset + "/imu_v100.yaml";
-  const ImuCalibration imu_cal = std::filesystem::exists(imu_yaml)
-                                     ? load_imu_calibration(imu_yaml)
-                                     : ImuCalibration{.topic = "/imu/imu"};
-  const auto lidar_cal = load_lidar_calibration(dataset + "/lidar_horz.yaml");
-  const auto prism_cal = load_prism_calibration(dataset + "/leica_prism.yaml");
-  const Sophus::SE3d T_imu_lidar = imu_from_lidar(imu_cal, lidar_cal);
+  const std::unique_ptr<DatasetLoader> loader =
+      make_loader(format, sequence_dir, params);
+  const Sophus::SE3d T_imu_lidar = loader->T_imu_lidar();
+  const Eigen::Vector3d t_imu_gt = loader->imu_to_gt_point();
 
-  // Prism position in the IMU frame: the lever arm to apply to our estimate so
-  // it can be compared against the Leica prism ground truth.
-  const Eigen::Vector3d t_imu_prism =
-      (imu_cal.T_body_imu.inverse() * prism_cal.T_body_prism).translation();
+  spdlog::info("IMU topic: {}, LiDAR topic: {}, GT topic: {}",
+               loader->imu_topic(), loader->lidar_topic(),
+               loader->gt_topic().empty() ? "(none)" : loader->gt_topic());
 
-  spdlog::info("IMU  topic: {}, LiDAR topic: {}, GT topic: {}", imu_cal.topic,
-               lidar_cal.topic, prism_cal.topic);
-
-  BagReader reader(dataset + "/" + sequence + ".bag");
+  BagReader reader(loader->bag_path());
 
   ImuBuffer imu_buffer;
   std::deque<PointCloud> pending;        // clouds awaiting IMU coverage
@@ -114,18 +104,28 @@ int main(int argc, char** argv) {
   size_t scans = 0;
   size_t converged_scans = 0;  // scans whose iEKF hit convergence_tol
   size_t total_iters = 0;      // iEKF iterations summed over all scans
-  size_t gt_msgs = 0;
 
-  // Trajectory and ground-truth outputs (TUM format) for offline evaluation.
+  // TUM outputs for offline evaluation. `trajectory.tum` is the IMU pose;
+  // `estimate_gt.tum` is the estimate at the ground-truth reference point
+  // (lever arm applied) and is what ATE compares against `gt.tum`. GT files are
+  // written only when the dataset provides ground truth.
   const std::filesystem::path& eval_dir = output_dir;
   std::filesystem::create_directories(eval_dir);
-  std::ofstream traj_out(eval_dir / "trajectory.tum");  // IMU pose
-  std::ofstream prism_out(eval_dir / "prism.tum");      // estimate at the prism
-  std::ofstream gt_out(eval_dir / "gt.tum");            // Leica prism GT
+  std::ofstream traj_out(eval_dir / "trajectory.tum");
+  std::ofstream est_gt_out;
+  std::ofstream gt_out;
+  if (loader->has_gt()) {
+    est_gt_out.open(eval_dir / "estimate_gt.tum");
+    gt_out.open(eval_dir / "gt.tum");
+  }
   // Fixed, 9-decimal precision so the ~1.6e9 timestamps keep nanosecond
   // resolution (the default 6 significant digits would destroy them).
-  for (std::ofstream* os : {&traj_out, &prism_out, &gt_out})
+  for (std::ofstream* os : {&traj_out, &est_gt_out, &gt_out})
     *os << std::fixed << std::setprecision(9);
+
+  size_t gt_msgs = 0;
+  if (loader->has_gt() && loader->gt_topic().empty())
+    gt_msgs = loader->write_external_gt(gt_out);
 
   // Live visualization stream (no-op unless built with
   // LIDAR_SLAM_ENABLE_RERUN).
@@ -141,6 +141,13 @@ int main(int argc, char** argv) {
         continue;
       }
       const auto [t_start, t_end] = *window;
+      // Drop a scan that does not advance past the last one processed (Livox
+      // publishes occasionally overlapping/out-of-order sweeps); otherwise the
+      // [last_ref, t_end] IMU window would invert.
+      if (last_ref != 0 && t_end <= last_ref) {
+        pending.pop_front();
+        continue;
+      }
       if (!imu_buffer.covers(last_ref, t_end)) break;  // need more IMU
 
       const auto traj =
@@ -170,11 +177,13 @@ int main(int argc, char** argv) {
       traj_out << t_sec << ' ' << p.x() << ' ' << p.y() << ' ' << p.z() << ' '
                << q.x() << ' ' << q.y() << ' ' << q.z() << ' ' << q.w() << '\n';
 
-      // Estimate at the prism (lever arm applied), for prism-to-prism ATE.
-      // Orientation is irrelevant to position-only GT, so write identity.
-      const Eigen::Vector3d p_prism = p + ekf->state().R * t_imu_prism;
-      prism_out << t_sec << ' ' << p_prism.x() << ' ' << p_prism.y() << ' '
-                << p_prism.z() << " 0 0 0 1\n";
+      // Estimate at the GT reference point (lever arm applied), for ATE against
+      // position-only GT. Orientation is irrelevant, so write identity.
+      if (loader->has_gt()) {
+        const Eigen::Vector3d p_gt = p + ekf->state().R * t_imu_gt;
+        est_gt_out << t_sec << ' ' << p_gt.x() << ' ' << p_gt.y() << ' '
+                   << p_gt.z() << " 0 0 0 1\n";
+      }
 
       if (scans % 100 == 0) {
         spdlog::info(
@@ -204,20 +213,25 @@ int main(int argc, char** argv) {
     }
   };
 
+  std::vector<std::string> topics = {loader->imu_topic(),
+                                     loader->lidar_topic()};
+  if (!loader->gt_topic().empty()) topics.push_back(loader->gt_topic());
+
   reader.read_messages(
-      {imu_cal.topic, lidar_cal.topic, prism_cal.topic},
-      [&](const std::string& topic, uint64_t /*stamp_ns*/,
-          std::span<const std::byte> data) {
-        if (topic == prism_cal.topic) {
+      topics, [&](const std::string& topic, uint64_t /*stamp_ns*/,
+                  std::span<const std::byte> data) {
+        if (topic == loader->gt_topic()) {
           // Ground truth: independent of the filter, dump every message.
-          const PoseStampedMsg gt = deserialize_pose_stamped(data);
-          gt_out << gt.stamp.to_sec() << ' ' << gt.position.x() << ' '
-                 << gt.position.y() << ' ' << gt.position.z() << " 0 0 0 1\n";
-          ++gt_msgs;
+          if (const std::optional<GtRow> gt = loader->decode_gt(data)) {
+            gt_out << gt->t_sec << ' ' << gt->pos.x() << ' ' << gt->pos.y()
+                   << ' ' << gt->pos.z() << " 0 0 0 1\n";
+            ++gt_msgs;
+          }
           return;
         }
-        if (topic == imu_cal.topic) {
-          const ImuMeasurement m = deserialize_imu(data);
+        if (topic == loader->imu_topic()) {
+          ImuMeasurement m = deserialize_imu(data);
+          m.linear_acceleration *= loader->imu_accel_scale();
           imu_buffer.push(m);
           if (!ekf) {
             init_imu.push_back(m);
@@ -251,9 +265,9 @@ int main(int argc, char** argv) {
               }
             }
           }
-        } else if (topic == lidar_cal.topic &&
+        } else if (topic == loader->lidar_topic() &&
                    ekf) {  // drop clouds that arrive before initialization
-          PointCloud pc = deserialize_pointcloud2(data);
+          PointCloud pc = loader->decode_cloud(data);
           // Shift the scan stamp onto the IMU clock by the lidar-to-IMU time
           // offset, so scan_window, trajectory, deskew, and the IMU window all
           // move together.

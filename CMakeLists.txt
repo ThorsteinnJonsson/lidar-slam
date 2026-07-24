@@ -25,6 +25,7 @@ add_executable(lidar_slam
     src/main.cpp
     src/io/bag_reader.cpp
     src/io/calibration.cpp
+    src/io/dataset_loader.cpp
     src/io/params.cpp
     src/io/ros_deserializer.cpp
     src/imu/buffer.cpp

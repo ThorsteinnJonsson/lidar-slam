@@ -1,0 +1,45 @@
+lidar_time_offset_sec: 0.0
+
+preprocess:
+  scan_voxel_leaf: 0.5
+
+init:
+  imu_count: 200
+  gravity_magnitude: 9.807
+
+imu_noise:
+  gyro_noise_std: 0.3162
+  accel_noise_std: 0.3162
+  gyro_rw_std: 0.01
+  accel_rw_std: 0.01
+
+iekf:
+  sigma: 0.0316
+  max_iterations: 5
+  convergence_tol: 0.001
+  reject_outliers: true
+  outlier_chi2: 3.841
+
+association:
+  num_neighbors: 5
+  max_neighbor_dist2: 5.0
+  max_plane_dist: 0.1
+  min_quality: 0.9
+
+map:
+  voxel_on_insert: true
+  voxel_leaf: 0.1
+  crop:
+    enabled: true
+    sensor_range: 300.0
+    margin_factor: 1.5
+    keep_factor: 2.0
+
+estimator:
+  enable_extrinsic_estimation: false
+
+# LiDAR -> IMU extrinsic (HILTI 2022), from the FAST-LIVO2 repo. Rotation is a
+# row-major 3x3 matrix.
+extrinsic:
+  translation: [-0.001, -0.00855, 0.055]
+  rotation: [0, -1, 0, -1, 0, 0, 0, 0, -1]
