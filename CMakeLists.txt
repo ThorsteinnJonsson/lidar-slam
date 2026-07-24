@@ -25,6 +25,7 @@ add_executable(lidar_slam
     src/main.cpp
     src/io/bag_reader.cpp
     src/io/calibration.cpp
+    src/io/dataset_loader.cpp
     src/io/params.cpp
     src/io/ros_deserializer.cpp
     src/imu/buffer.cpp
@@ -68,6 +69,11 @@ target_link_libraries(lidar_slam PRIVATE
     CLI11::CLI11
     ${LZ4_LIBRARIES}
 )
+
+# ── Dev tools ─────────────────────────────────────────────────────────────────
+add_executable(bag_inspect tools/bag_inspect.cpp src/io/bag_reader.cpp)
+target_include_directories(bag_inspect PRIVATE src)
+target_link_libraries(bag_inspect PRIVATE CLI11::CLI11 ${LZ4_LIBRARIES})
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 if(LIDAR_SLAM_BUILD_TESTS)

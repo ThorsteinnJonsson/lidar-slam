@@ -152,10 +152,26 @@ void BagReader::scan_connections() {
     if (field_val<uint8_t>(hdr, "op") == OP_CONNECTION) {
       uint32_t conn_id = field_val<uint32_t>(hdr, "conn");
       conn_topics_[conn_id] = field_str(hdr, "topic");
+      // The connection data is itself a header-format blob carrying the message
+      // type (and definition, md5sum, ...). Parse it for the type.
+      auto data = read_vec(f, data_len);
+      conn_types_[conn_id] = field_str(parse_fields(data), "type");
+      continue;
     }
 
     f.seekg(data_len, std::ios::cur);
   }
+}
+
+std::vector<std::pair<std::string, std::string>> BagReader::topics() const {
+  std::vector<std::pair<std::string, std::string>> out;
+  for (const auto& [id, topic] : conn_topics_) {
+    auto it = conn_types_.find(id);
+    out.emplace_back(topic, it != conn_types_.end() ? it->second : "");
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
 }
 
 void BagReader::read_messages(const std::vector<std::string>& topics,

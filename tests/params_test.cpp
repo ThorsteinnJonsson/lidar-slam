@@ -184,6 +184,28 @@ map:
   EXPECT_TRUE(mentions("map.crop.enbaled"));
 }
 
+TEST(Params, ExtrinsicTranslationAndRotation) {
+  const auto path = write_yaml("extrinsic", R"(
+extrinsic:
+  translation: [0.04165, 0.02326, -0.0284]
+  rotation: [0.7071067811865476, 0.0, 0.0, 0.7071067811865476]
+)");
+  const Params p = load_params(path);
+  EXPECT_NEAR(p.extrinsic.translation().x(), 0.04165, 1e-9);
+  EXPECT_NEAR(p.extrinsic.translation().z(), -0.0284, 1e-9);
+  // 90 deg about z: x axis maps to y.
+  const Eigen::Vector3d x = p.extrinsic.so3() * Eigen::Vector3d::UnitX();
+  EXPECT_NEAR(x.y(), 1.0, 1e-6);
+}
+
+TEST(Params, ExtrinsicWrongLengthThrows) {
+  const auto path = write_yaml("ext_bad", R"(
+extrinsic:
+  translation: [1.0, 2.0]
+)");
+  EXPECT_THROW(load_params(path), std::runtime_error);
+}
+
 TEST(Params, MissingFileThrows) {
   EXPECT_THROW(load_params("definitely/not/here/params.yaml"),
                std::runtime_error);

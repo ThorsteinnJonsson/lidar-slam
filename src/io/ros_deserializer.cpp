@@ -111,6 +111,28 @@ uint32_t read_as_u32(const std::byte* p, uint8_t datatype) {
   }
 }
 
+double read_as_double(const std::byte* p, uint8_t datatype) {
+  switch (datatype) {
+    case PF_FLOAT64: {
+      double v;
+      std::memcpy(&v, p, 8);
+      return v;
+    }
+    case PF_FLOAT32: {
+      float v;
+      std::memcpy(&v, p, 4);
+      return v;
+    }
+    case PF_UINT32: {
+      uint32_t v;
+      std::memcpy(&v, p, 4);
+      return v;
+    }
+    default:
+      return 0.0;
+  }
+}
+
 }  // namespace
 
 // ── sensor_msgs/Imu
@@ -201,7 +223,8 @@ PoseStampedMsg deserialize_pose_stamped(std::span<const std::byte> data) {
 //   uint8[] data: uint32 len, then bytes
 //   uint8 is_dense
 
-PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
+PointCloud deserialize_pointcloud2(std::span<const std::byte> data,
+                                   PointTimeMode time_mode) {
   SpanReader r(data);
   PointCloud cloud;
 
@@ -252,8 +275,9 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
   const auto* fz = find({"z"});
   const auto* fi = find({"intensity", "reflectivity"});
   const auto* fr = find({"ring"});
-  // Per-point time offset (ns from header stamp); needed for deskewing.
+  // Per-point time; interpreted per `time_mode` (needed for deskewing).
   const auto* ft = find({"t", "time", "timestamp"});
+  const double header_sec = cloud.stamp.to_sec();
 
   cloud.reserve(num_points);
 
@@ -265,8 +289,68 @@ PointCloud deserialize_pointcloud2(std::span<const std::byte> data) {
     cloud.intensity.push_back(fi ? read_as_float(p + fi->offset, fi->datatype)
                                  : 0.0f);
     cloud.ring.push_back(fr ? read_as_u16(p + fr->offset, fr->datatype) : 0);
-    cloud.t_offset_ns.push_back(ft ? read_as_u32(p + ft->offset, ft->datatype)
-                                   : 0);
+
+    uint32_t t_offset = 0;
+    if (ft) {
+      if (time_mode == PointTimeMode::AbsoluteSeconds) {
+        // Absolute per-point time (seconds) minus the header stamp. Clamp a
+        // tiny negative first point (rounding) to 0; a full scan is well under
+        // the uint32 ns range (~4.29 s).
+        const double off_ns =
+            (read_as_double(p + ft->offset, ft->datatype) - header_sec) * 1e9;
+        t_offset = off_ns > 0.0 ? static_cast<uint32_t>(off_ns) : 0;
+      } else {
+        t_offset = read_as_u32(p + ft->offset, ft->datatype);
+      }
+    }
+    cloud.t_offset_ns.push_back(t_offset);
+  }
+
+  return cloud;
+}
+
+// ── livox_ros_driver/CustomMsg
+// ─────────────────────────────────────────────────
+//
+// Wire layout (little-endian):
+//   std_msgs/Header: uint32 seq, uint32 secs, uint32 nsecs, string frame_id
+//   uint64 timebase        (scan base time, ns)
+//   uint32 point_num
+//   uint8  lidar_id
+//   uint8[3] rsvd          (fixed array: 3 raw bytes, no length prefix)
+//   CustomPoint[] points   (variable array: uint32 length, then elements)
+//     CustomPoint: uint32 offset_time, float32 x/y/z, uint8 reflectivity,
+//                  uint8 tag, uint8 line
+
+PointCloud deserialize_livox_custommsg(std::span<const std::byte> data) {
+  SpanReader r(data);
+  PointCloud cloud;
+
+  r.read<uint32_t>();  // seq
+  cloud.stamp.secs = r.read<uint32_t>();
+  cloud.stamp.nsecs = r.read<uint32_t>();
+  cloud.frame_id = r.read_string();
+
+  r.read<uint64_t>();  // timebase: unreliable here (seen 160 s off the header
+                       // stamp), and offset_time is already the intra-scan
+                       // offset, so the header stamp alone is the scan
+                       // reference
+  r.read<uint32_t>();  // point_num (redundant with the array length below)
+  r.read<uint8_t>();   // lidar_id
+  r.skip(3);           // rsvd[3]
+
+  const uint32_t n = r.read<uint32_t>();  // points array length
+  cloud.reserve(n);
+
+  for (uint32_t i = 0; i < n; ++i) {
+    const uint32_t offset_time = r.read<uint32_t>();  // ns from scan start
+    cloud.x.push_back(r.read<float>());
+    cloud.y.push_back(r.read<float>());
+    cloud.z.push_back(r.read<float>());
+    cloud.intensity.push_back(static_cast<float>(r.read<uint8_t>()));  // refl
+    r.read<uint8_t>();                                                 // tag
+    cloud.ring.push_back(r.read<uint8_t>());                           // line
+    cloud.t_offset_ns.push_back(offset_time);
   }
 
   return cloud;

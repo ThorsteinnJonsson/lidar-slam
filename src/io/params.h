@@ -1,7 +1,9 @@
 #pragma once
 
+#include <Eigen/Geometry>
 #include <cstddef>
 #include <filesystem>
+#include <sophus/se3.hpp>
 #include <string>
 #include <vector>
 
@@ -31,6 +33,11 @@ struct Params {
   IekfConfig iekf;
   PlaneAssocParams assoc;
   LocalMapParams map;
+
+  // LiDAR-to-IMU extrinsic, used by dataset loaders whose sequence does not
+  // ship a calibration file (HILTI, FAST-LIVO2). NTU VIRAL reads it from the
+  // dataset YAMLs and ignores this. Default identity.
+  Sophus::SE3d extrinsic;
 };
 
 // Load parameters from a YAML file.

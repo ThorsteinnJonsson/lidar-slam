@@ -1,10 +1,11 @@
 # SLAM Framework TODO
 
-FAST-LIO2-style LiDAR-inertial SLAM. Dataset: NTU VIRAL (ROS1 bag, Ouster OS1-16 + IMU).
+FAST-LIO2-style LiDAR-inertial SLAM. ROS1 bags; three dataset formats
+(NTU VIRAL, HILTI 2022, FAST-LIVO2) behind a `DatasetLoader` interface.
 
 ## Status
 
-Runs end-to-end on all four NTU VIRAL sequences (`eee_02`, `eee_03`, `rtp_03`, `tnp_01`):
+Runs end-to-end on NTU VIRAL (Ouster), HILTI 2022 (Hesai), and FAST-LIVO2 (Livox Avia):
 bag I/O → per-scan deskew → voxel downsample → iterated error-state EKF against an
 incremental k-d tree (ikd-Tree) map → TUM trajectory + evo metrics.
 
@@ -23,11 +24,22 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 
 ## Open
 
-- [ ] Dataset loader interface, when a second format actually lands. `--format` validates
-      today but selects nothing.
+- [ ] HILTI extrinsic: `config/hilti_22.yaml` uses a PLACEHOLDER identity Alphasense-IMU -> Hesai
+      transform (the real one ships in the HILTI calibration files, not the sequence dir). A wrong
+      rotation tilts the whole trajectory — replace before trusting HILTI numbers.
+- [ ] FAST-LIVO2 has no ground truth for `HKU_Cultural_Center_01`, so no ATE. Pick a GT sequence to
+      quantify accuracy.
+- [ ] General refactoring pass. `main.cpp` is ~300 lines doing CLI, bag streaming, the per-scan
+      pipeline, and output; `propagator.cpp` still indexes error-state blocks with literals instead
+      of the `kIdx*` constants; trim comments that restate the code.
 
 ## Done, with findings worth keeping
 
+- [x] Multi-format datasets behind a `DatasetLoader` interface (`--format NTU_VIRAL|HILTI_22|FAST_LIVO2`).
+      Per-format quirks handled: Hesai per-point time is absolute f64 seconds (not ns offset); Livox
+      CustomMsg is a separate decoder and its IMU reports accel in g (x9.80665); Livox `timebase` was
+      160 s off the header stamp so the header is the scan reference; Livox sweeps can overlap, so
+      non-advancing scans are dropped. `tools/bag_inspect` dumps topics/types/point layout.
 - [x] CLI11 arguments: `--format`, `--sequence`, `--params` (all required), `--output`.
 - [x] Tunables in `config/ntu_viral.yaml` (see `config/README.md`).
 - [x] Online LiDAR↔IMU extrinsic estimation (17→23 DOF), behind `enable_extrinsic_estimation`,
