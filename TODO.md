@@ -38,7 +38,7 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
       time is absolute f64 seconds (not ns offset); Livox CustomMsg is a separate decoder and its IMU
       reports accel in g (x9.80665); Livox `timebase` was 160 s off the header stamp so the header is
       the scan reference; Livox sweeps can overlap, so non-advancing scans are dropped. Extrinsic in
-      params takes a quaternion or a 3x3 matrix. `tools/bag_inspect` dumps topics/types/point layout.
+      params takes a quaternion or a 3x3 matrix.
 - [x] CLI11 arguments: `--format`, `--sequence`, `--params` (all required), `--output`.
 - [x] Tunables in `config/ntu_viral.yaml` (see `config/README.md`).
 - [x] Online LiDAR↔IMU extrinsic estimation (17→23 DOF), behind `enable_extrinsic_estimation`,

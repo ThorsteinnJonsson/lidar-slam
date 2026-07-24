@@ -48,9 +48,6 @@ Run from the repository root: the paths above are relative.
 | `HILTI_22` | Hesai PandarXT-32 | `config/hilti_22.yaml` | sparse control points (`.txt`) |
 | `FAST_LIVO2` | Livox Avia | `config/fast_livo2.yaml` | none |
 
-`tools/bag_inspect <bag> [lidar_topic]` dumps a bag's topics, message types, and
-point-field layout, for adding a new format.
-
 ## Evaluation
 
 Each run writes three [TUM-format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)

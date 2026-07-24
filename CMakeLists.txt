@@ -70,11 +70,6 @@ target_link_libraries(lidar_slam PRIVATE
     ${LZ4_LIBRARIES}
 )
 
-# ── Dev tools ─────────────────────────────────────────────────────────────────
-add_executable(bag_inspect tools/bag_inspect.cpp src/io/bag_reader.cpp)
-target_include_directories(bag_inspect PRIVATE src)
-target_link_libraries(bag_inspect PRIVATE CLI11::CLI11 ${LZ4_LIBRARIES})
-
 # ── Tests ─────────────────────────────────────────────────────────────────────
 if(LIDAR_SLAM_BUILD_TESTS)
     enable_testing()

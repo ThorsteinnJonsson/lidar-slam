@@ -31,14 +31,9 @@ class BagReader {
   // (within each chunk; chunk order is file order). Calls cb for each message.
   void read_messages(const std::vector<std::string>& topics, Callback cb);
 
-  // (topic, ROS message type) for every connection, sorted and deduplicated.
-  // Read from the index, so this is cheap (no chunk decompression).
-  std::vector<std::pair<std::string, std::string>> topics() const;
-
  private:
   std::filesystem::path path_;
   std::unordered_map<uint32_t, std::string> conn_topics_;  // conn_id → topic
-  std::unordered_map<uint32_t, std::string> conn_types_;  // conn_id → msg type
 
   // Pass 1: seek to the index section and register all CONNECTION records.
   void scan_connections();
