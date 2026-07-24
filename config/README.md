@@ -125,3 +125,14 @@ recenters and the outer slabs are box-deleted.
 | Key                           | Default | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ----------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enable_extrinsic_estimation` | `false` | Estimate the LiDAR-IMU extrinsic online (adds `[δθ_ext, δp_ext]` to the filtered state). Off by default, matching FAST-LIO2's `extrinsic_est_en: false` for NTU VIRAL. Measured on `eee_03`, enabling it costs ATE (0.1119 → 0.1137 even with a tight seed) and the extrinsic walks out to ~2-4σ of whatever seed it is given rather than converging, meaning it absorbs registration misfit rather than being observed. Within a single frame `δp_ext` and `δp` shift the world point identically, so only real motion excitation separates them. When off, the extrinsic is pinned via its prior covariance and stays exactly at the calibration value. |
+
+## `extrinsic`
+
+LiDAR-to-IMU transform, used by loaders whose dataset does not ship a
+calibration (HILTI, FAST-LIVO2). NTU VIRAL reads it from the dataset YAMLs and
+ignores this. Both keys optional; each defaults to identity.
+
+| Key | Meaning |
+|---|---|
+| `translation` | `[x, y, z]` (m). |
+| `rotation` | Either a unit quaternion `[w, x, y, z]` (4 values) or a row-major 3x3 matrix (9 values). |

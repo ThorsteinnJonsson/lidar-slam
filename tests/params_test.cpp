@@ -198,6 +198,22 @@ extrinsic:
   EXPECT_NEAR(x.y(), 1.0, 1e-6);
 }
 
+TEST(Params, ExtrinsicRotationMatrix) {
+  // Row-major 90 deg about z: maps x axis to -y (the matrix's first column).
+  const auto path = write_yaml("ext_mat", R"(
+extrinsic:
+  translation: [1.0, 2.0, 3.0]
+  rotation: [0, 1, 0,
+             -1, 0, 0,
+             0, 0, 1]
+)");
+  const Params p = load_params(path);
+  EXPECT_NEAR(p.extrinsic.translation().y(), 2.0, 1e-9);
+  const Eigen::Vector3d x = p.extrinsic.so3() * Eigen::Vector3d::UnitX();
+  EXPECT_NEAR(x.y(), -1.0, 1e-6);
+  EXPECT_NEAR(x.x(), 0.0, 1e-6);
+}
+
 TEST(Params, ExtrinsicWrongLengthThrows) {
   const auto path = write_yaml("ext_bad", R"(
 extrinsic:

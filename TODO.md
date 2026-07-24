@@ -24,9 +24,6 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 
 ## Open
 
-- [ ] HILTI extrinsic: `config/hilti_22.yaml` uses a PLACEHOLDER identity Alphasense-IMU -> Hesai
-      transform (the real one ships in the HILTI calibration files, not the sequence dir). A wrong
-      rotation tilts the whole trajectory — replace before trusting HILTI numbers.
 - [ ] FAST-LIVO2 has no ground truth for `HKU_Cultural_Center_01`, so no ATE. Pick a GT sequence to
       quantify accuracy.
 - [ ] General refactoring pass. `main.cpp` is ~300 lines doing CLI, bag streaming, the per-scan
@@ -36,10 +33,12 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 ## Done, with findings worth keeping
 
 - [x] Multi-format datasets behind a `DatasetLoader` interface (`--format NTU_VIRAL|HILTI_22|FAST_LIVO2`).
-      Per-format quirks handled: Hesai per-point time is absolute f64 seconds (not ns offset); Livox
-      CustomMsg is a separate decoder and its IMU reports accel in g (x9.80665); Livox `timebase` was
-      160 s off the header stamp so the header is the scan reference; Livox sweeps can overlap, so
-      non-advancing scans are dropped. `tools/bag_inspect` dumps topics/types/point layout.
+      NTU eee_03 ATE 0.112 (unchanged), HILTI exp21 ATE 0.063 (with the real extrinsic from the
+      FAST-LIVO2 repo), FAST-LIVO2 runs but ships no GT. Per-format quirks handled: Hesai per-point
+      time is absolute f64 seconds (not ns offset); Livox CustomMsg is a separate decoder and its IMU
+      reports accel in g (x9.80665); Livox `timebase` was 160 s off the header stamp so the header is
+      the scan reference; Livox sweeps can overlap, so non-advancing scans are dropped. Extrinsic in
+      params takes a quaternion or a 3x3 matrix. `tools/bag_inspect` dumps topics/types/point layout.
 - [x] CLI11 arguments: `--format`, `--sequence`, `--params` (all required), `--output`.
 - [x] Tunables in `config/ntu_viral.yaml` (see `config/README.md`).
 - [x] Online LiDAR↔IMU extrinsic estimation (17→23 DOF), behind `enable_extrinsic_estimation`,

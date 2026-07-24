@@ -38,10 +38,8 @@ map:
 estimator:
   enable_extrinsic_estimation: false
 
-# PLACEHOLDER extrinsic (identity). The HILTI 2022 Alphasense-IMU -> Hesai
-# transform ships in the HILTI calibration files, which are not in this sequence
-# directory. Replace with the official values; a wrong rotation here tilts the
-# whole trajectory.
+# LiDAR -> IMU extrinsic (HILTI 2022), from the FAST-LIVO2 repo. Rotation is a
+# row-major 3x3 matrix.
 extrinsic:
-  translation: [0.0, 0.0, 0.0]
-  rotation: [1.0, 0.0, 0.0, 0.0]
+  translation: [-0.001, -0.00855, 0.055]
+  rotation: [0, -1, 0, -1, 0, 0, 0, 0, -1]
