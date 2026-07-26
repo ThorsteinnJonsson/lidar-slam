@@ -6,6 +6,7 @@ add_library(slam_io STATIC
     calibration.cpp
     dataset_loader.cpp
     params.cpp
+    result_writer.cpp
     ros_deserializer.cpp
 )
 

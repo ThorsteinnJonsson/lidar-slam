@@ -3,8 +3,6 @@
 #include <CLI/CLI.hpp>
 #include <deque>
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -17,6 +15,7 @@
 #include "io/bag_reader.h"
 #include "io/dataset_loader.h"
 #include "io/params.h"
+#include "io/result_writer.h"
 #include "io/ros_deserializer.h"
 #include "map/association.h"
 #include "preprocess/deskew.h"
@@ -83,27 +82,12 @@ int main(int argc, char** argv) {
   size_t converged_scans = 0;  // scans whose iEKF hit convergence_tol
   size_t total_iters = 0;      // iEKF iterations summed over all scans
 
-  // TUM outputs for offline evaluation. `trajectory.tum` is the IMU pose;
-  // `estimate_gt.tum` is the estimate at the ground-truth reference point
-  // (lever arm applied) and is what ATE compares against `gt.tum`. GT files are
-  // written only when the dataset provides ground truth.
-  const std::filesystem::path& eval_dir = output_dir;
-  std::filesystem::create_directories(eval_dir);
-  std::ofstream traj_out(eval_dir / "trajectory.tum");
-  std::ofstream est_gt_out;
-  std::ofstream gt_out;
-  if (loader->has_gt()) {
-    est_gt_out.open(eval_dir / "estimate_gt.tum");
-    gt_out.open(eval_dir / "gt.tum");
-  }
-  // Fixed, 9-decimal precision so the ~1.6e9 timestamps keep nanosecond
-  // resolution (the default 6 significant digits would destroy them).
-  for (std::ofstream* os : {&traj_out, &est_gt_out, &gt_out})
-    *os << std::fixed << std::setprecision(9);
-
+  // TUM outputs for offline evaluation (see ResultWriter). External-file GT is
+  // dumped once up front; topic-streamed GT flows through write_gt below.
+  ResultWriter writer(output_dir, loader->has_gt(), t_imu_gt);
   size_t gt_msgs = 0;
   if (loader->has_gt() && loader->gt_topic().empty())
-    gt_msgs = loader->write_external_gt(gt_out);
+    gt_msgs = loader->write_external_gt(writer.gt_stream());
 
   // Live visualization stream (no-op unless built with
   // LIDAR_SLAM_ENABLE_RERUN).
@@ -146,23 +130,12 @@ int main(int argc, char** argv) {
       converged_scans += r.converged ? 1 : 0;
       total_iters += static_cast<size_t>(r.iterations);
 
-      const Eigen::Vector3d& p = ekf->state().p;
-      const Eigen::Quaterniond q = ekf->state().R.unit_quaternion();
-      // Write the corrected (offset-shifted) stamp: after the lidar<->IMU time
-      // offset the scan-end time is on the IMU/GT reference clock, so this is
-      // the pose's true time for GT association.
+      // The offset-corrected scan-end time is on the IMU/GT reference clock, so
+      // it is the pose's true time for GT association.
       const double t_sec = Timestamp::from_nsec(t_end).to_sec();
-      traj_out << t_sec << ' ' << p.x() << ' ' << p.y() << ' ' << p.z() << ' '
-               << q.x() << ' ' << q.y() << ' ' << q.z() << ' ' << q.w() << '\n';
+      writer.write_pose(t_sec, ekf->state());
 
-      // Estimate at the GT reference point (lever arm applied), for ATE against
-      // position-only GT. Orientation is irrelevant, so write identity.
-      if (loader->has_gt()) {
-        const Eigen::Vector3d p_gt = p + ekf->state().R * t_imu_gt;
-        est_gt_out << t_sec << ' ' << p_gt.x() << ' ' << p_gt.y() << ' '
-                   << p_gt.z() << " 0 0 0 1\n";
-      }
-
+      const Eigen::Vector3d& p = ekf->state().p;
       if (scans % 100 == 0) {
         spdlog::info(
             "scan {:5} | pos [{:7.2f},{:7.2f},{:7.2f}] | map {:6} pts | "
@@ -201,8 +174,7 @@ int main(int argc, char** argv) {
         if (topic == loader->gt_topic()) {
           // Ground truth: independent of the filter, dump every message.
           if (const std::optional<GtRow> gt = loader->decode_gt(data)) {
-            gt_out << gt->t_sec << ' ' << gt->pos.x() << ' ' << gt->pos.y()
-                   << ' ' << gt->pos.z() << " 0 0 0 1\n";
+            writer.write_gt(*gt);
             ++gt_msgs;
           }
           return;
