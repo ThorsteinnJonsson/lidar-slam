@@ -24,46 +24,68 @@
 #include "types.h"
 #include "viz/visualizer.h"
 
-int main(int argc, char** argv) {
-  CLI::App app{"LiDAR-inertial SLAM (FAST-LIO2 style)"};
+namespace {
+
+struct RunConfig {
   std::string format;
   std::filesystem::path sequence_dir;
   std::filesystem::path params_path;
-  std::filesystem::path output_dir;
-  app.add_option("--format", format, "Dataset format")
+  std::filesystem::path output_dir;  // defaulted to evaluation/<sequence>
+};
+
+// Parse the command line. Returns nullopt when the program should exit
+// immediately (--help or a parse error); `exit_code` then holds the return
+// code.
+std::optional<RunConfig> parse_args(int argc, char** argv, int& exit_code) {
+  CLI::App app{"LiDAR-inertial SLAM (FAST-LIO2 style)"};
+  RunConfig cfg;
+  app.add_option("--format", cfg.format, "Dataset format")
       ->required()
       ->check(CLI::IsMember({"NTU_VIRAL", "HILTI_22", "FAST_LIVO2"}));
-  app.add_option("--sequence", sequence_dir, "Path to the sequence directory")
+  app.add_option("--sequence", cfg.sequence_dir,
+                 "Path to the sequence directory")
       ->required()
       ->check(CLI::ExistingDirectory);
-  app.add_option("--params", params_path, "Path to the parameter YAML")
+  app.add_option("--params", cfg.params_path, "Path to the parameter YAML")
       ->required()
       ->check(CLI::ExistingFile);
-  app.add_option("--output", output_dir,
+  app.add_option("--output", cfg.output_dir,
                  "Directory for TUM output (default: evaluation/<sequence>)");
-  CLI11_PARSE(app, argc, argv);
+  try {
+    app.parse(argc, argv);
+  } catch (const CLI::ParseError& e) {
+    exit_code = app.exit(e);
+    return std::nullopt;
+  }
+  if (cfg.output_dir.empty())
+    cfg.output_dir =
+        std::filesystem::path("evaluation") / cfg.sequence_dir.filename();
+  return cfg;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  int exit_code = 0;
+  const std::optional<RunConfig> cfg_opt = parse_args(argc, argv, exit_code);
+  if (!cfg_opt) return exit_code;
+  const RunConfig& cfg = *cfg_opt;
 
   spdlog::flush_on(spdlog::level::info);  // flush progress as it is logged
   spdlog::info("lidar-slam initializing...");
 
   std::vector<std::string> param_warnings;
-  const Params params = load_params(params_path, &param_warnings);
+  const Params params = load_params(cfg.params_path, &param_warnings);
   for (const std::string& w : param_warnings) spdlog::warn("{}", w);
 
-  // The sequence directory name also names the bag inside it and the default
-  // output directory.
-  const std::string sequence = sequence_dir.filename().string();
-  const std::string dataset = sequence_dir.string();
-  if (output_dir.empty())
-    output_dir = std::filesystem::path("evaluation") / sequence;
-  spdlog::info("Format: {}, sequence: {}, params: {}", format, dataset,
-               params_path.string());
+  spdlog::info("Format: {}, sequence: {}, params: {}", cfg.format,
+               cfg.sequence_dir.string(), cfg.params_path.string());
 
   const int64_t lidar_time_offset_ns =
       static_cast<int64_t>(params.lidar_time_offset_sec * 1e9);
 
   const std::unique_ptr<DatasetLoader> loader =
-      make_loader(format, sequence_dir, params);
+      make_loader(cfg.format, cfg.sequence_dir, params);
   const Sophus::SE3d T_imu_lidar = loader->T_imu_lidar();
   const Eigen::Vector3d t_imu_gt = loader->imu_to_gt_point();
 
@@ -84,7 +106,7 @@ int main(int argc, char** argv) {
 
   // TUM outputs for offline evaluation (see ResultWriter). External-file GT is
   // dumped once up front; topic-streamed GT flows through write_gt below.
-  ResultWriter writer(output_dir, loader->has_gt(), t_imu_gt);
+  ResultWriter writer(cfg.output_dir, loader->has_gt(), t_imu_gt);
   size_t gt_msgs = 0;
   if (loader->has_gt() && loader->gt_topic().empty())
     gt_msgs = loader->write_external_gt(writer.gt_stream());
