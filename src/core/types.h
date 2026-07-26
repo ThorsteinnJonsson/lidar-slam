@@ -49,4 +49,15 @@ struct PointCloud {
     ring.reserve(n);
     t_offset_ns.reserve(n);
   }
+
+  // Points as (x, y, z) vectors, dropping intensity/ring/time. This is the view
+  // the estimator consumes.
+  std::vector<Eigen::Vector3f> xyz() const {
+    std::vector<Eigen::Vector3f> pts;
+    pts.reserve(size());
+    for (size_t i = 0; i < size(); ++i) {
+      pts.emplace_back(x[i], y[i], z[i]);
+    }
+    return pts;
+  }
 };

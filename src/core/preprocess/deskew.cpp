@@ -2,6 +2,15 @@
 
 #include <algorithm>
 
+std::optional<std::pair<uint64_t, uint64_t>> scan_time_window(
+    const PointCloud& cloud) {
+  if (cloud.t_offset_ns.empty()) return std::nullopt;
+  const auto [lo, hi] =
+      std::minmax_element(cloud.t_offset_ns.begin(), cloud.t_offset_ns.end());
+  const uint64_t base = cloud.stamp.to_nsec();
+  return std::make_pair(base + *lo, base + *hi);
+}
+
 namespace {
 
 // Interpolate a body pose at time t_ns from a (time-sorted) trajectory.
