@@ -15,6 +15,7 @@ add_executable(unit_tests
     params_test.cpp
     point_cloud_test.cpp
     result_writer_test.cpp
+    slam_pipeline_test.cpp
 )
 
 target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
