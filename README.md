@@ -1,7 +1,6 @@
 # lidar-slam
 
-LiDAR-SLAM based on [FAST-LIO2](https://github.com/hku-mars/FAST_LIO). C++23, built
-with CMake + FetchContent.
+LiDAR-inertial SLAM based on [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).
 
 ## Prerequisites
 
@@ -33,20 +32,20 @@ switching between them doesn't require a clean.
     --params config/ntu_viral.yaml
 ```
 
-| Option | | |
-| --- | --- | --- |
-| `--format` | required | Dataset format: `NTU_VIRAL`, `HILTI_22`, or `FAST_LIVO2`. |
-| `--sequence` | required | Sequence directory holding the `.bag`. |
-| `--params` | required | Tunable parameters, see [config/README.md](config/README.md). Use the matching per-format file. |
-| `--output` | optional | Output directory. Defaults to `evaluation/<sequence>`. |
+| Option       |          |                                                                                                 |
+| ------------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `--format`   | required | Dataset format: `NTU_VIRAL`, `HILTI_22`, or `FAST_LIVO2`.                                       |
+| `--sequence` | required | Sequence directory holding the `.bag`.                                                          |
+| `--params`   | required | Tunable parameters, see [config/README.md](config/README.md). Use the matching per-format file. |
+| `--output`   | optional | Output directory. Defaults to `evaluation/<sequence>`.                                          |
 
 Run from the repository root: the paths above are relative.
 
-| Format | LiDAR | Params | Ground truth |
-| --- | --- | --- | --- |
-| `NTU_VIRAL` | Ouster OS1 | `config/ntu_viral.yaml` | in-bag Leica prism |
-| `HILTI_22` | Hesai PandarXT-32 | `config/hilti_22.yaml` | sparse control points (`.txt`) |
-| `FAST_LIVO2` | Livox Avia | `config/fast_livo2.yaml` | none |
+| Format       | LiDAR             | Params                   | Ground truth                   |
+| ------------ | ----------------- | ------------------------ | ------------------------------ |
+| `NTU_VIRAL`  | Ouster OS1        | `config/ntu_viral.yaml`  | in-bag Leica prism             |
+| `HILTI_22`   | Hesai PandarXT-32 | `config/hilti_22.yaml`   | sparse control points (`.txt`) |
+| `FAST_LIVO2` | Livox Avia        | `config/fast_livo2.yaml` | none                           |
 
 ## Evaluation
 
