@@ -63,6 +63,43 @@ std::optional<RunConfig> parse_args(int argc, char** argv, int& exit_code) {
   return cfg;
 }
 
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+
+void log_progress(size_t scans, const State& s, size_t map_size,
+                  const EkfResult& r) {
+  spdlog::info(
+      "scan {:5} | pos [{:7.2f},{:7.2f},{:7.2f}] | map {:6} pts | iters {} {}",
+      scans, s.p.x(), s.p.y(), s.p.z(), map_size, r.iterations,
+      r.converged ? "conv" : "");
+}
+
+void log_summary(size_t scans, size_t map_size, size_t gt_msgs,
+                 size_t converged_scans, size_t total_iters) {
+  spdlog::info(
+      "Done. Processed {} scans, final map {} points, {} GT poses written.",
+      scans, map_size, gt_msgs);
+  if (scans == 0) return;
+  spdlog::info(
+      "iEKF: {}/{} scans converged ({:.1f}%), mean {:.2f} iters/scan.",
+      converged_scans, scans,
+      100.0 * static_cast<double>(converged_scans) / static_cast<double>(scans),
+      static_cast<double>(total_iters) / static_cast<double>(scans));
+}
+
+// How far the online extrinsic estimate drifted from the calibration seed.
+// Large translation drift suggests it is being driven by unobservable
+// directions rather than genuine miscalibration.
+void log_extrinsic_drift(const Sophus::SE3d& seed, const State& s) {
+  const Eigen::Vector3d d_rot = (seed.so3().inverse() * s.R_imu_lidar).log();
+  const Eigen::Vector3d d_trans = s.p_imu_lidar - seed.translation();
+  spdlog::info(
+      "Extrinsic: drot {:.3f} deg | dtrans {:.4f} m | p_il [{:+.4f}, {:+.4f}, "
+      "{:+.4f}] (seed [{:+.4f}, {:+.4f}, {:+.4f}])",
+      d_rot.norm() * 180.0 / std::numbers::pi, d_trans.norm(),
+      s.p_imu_lidar.x(), s.p_imu_lidar.y(), s.p_imu_lidar.z(),
+      seed.translation().x(), seed.translation().y(), seed.translation().z());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -157,13 +194,8 @@ int main(int argc, char** argv) {
       const double t_sec = Timestamp::from_nsec(t_end).to_sec();
       writer.write_pose(t_sec, ekf->state());
 
-      const Eigen::Vector3d& p = ekf->state().p;
       if (scans % 100 == 0) {
-        spdlog::info(
-            "scan {:5} | pos [{:7.2f},{:7.2f},{:7.2f}] | map {:6} pts | "
-            "iters {} {}",
-            scans, p.x(), p.y(), p.z(), ekf->map().size(), r.iterations,
-            r.converged ? "conv" : "");
+        log_progress(scans, ekf->state(), ekf->map().size(), r);
       }
 
       // Live visualization (no-op unless built with Rerun). Transform the scan
@@ -256,30 +288,10 @@ int main(int argc, char** argv) {
     viz.log_map(ekf->map());
   }
 
-  spdlog::info(
-      "Done. Processed {} scans, final map {} points, {} GT poses written.",
-      scans, ekf ? ekf->map().size() : 0u, gt_msgs);
+  log_summary(scans, ekf ? ekf->map().size() : 0u, gt_msgs, converged_scans,
+              total_iters);
   if (scans > 0) {
-    spdlog::info(
-        "iEKF: {}/{} scans converged ({:.1f}%), mean {:.2f} iters/scan.",
-        converged_scans, scans,
-        100.0 * static_cast<double>(converged_scans) /
-            static_cast<double>(scans),
-        static_cast<double>(total_iters) / static_cast<double>(scans));
-    // How far the online extrinsic estimate drifted from the YAML seed. Large
-    // translation drift suggests it is being driven by unobservable directions
-    // rather than genuine miscalibration.
-    const Eigen::Vector3d d_rot =
-        (T_imu_lidar.so3().inverse() * ekf->state().R_imu_lidar).log();
-    const Eigen::Vector3d d_trans =
-        ekf->state().p_imu_lidar - T_imu_lidar.translation();
-    spdlog::info(
-        "Extrinsic: drot {:.3f} deg | dtrans {:.4f} m | p_il [{:+.4f}, "
-        "{:+.4f}, {:+.4f}] (seed [{:+.4f}, {:+.4f}, {:+.4f}])",
-        d_rot.norm() * 180.0 / std::numbers::pi, d_trans.norm(),
-        ekf->state().p_imu_lidar.x(), ekf->state().p_imu_lidar.y(),
-        ekf->state().p_imu_lidar.z(), T_imu_lidar.translation().x(),
-        T_imu_lidar.translation().y(), T_imu_lidar.translation().z());
+    log_extrinsic_drift(T_imu_lidar, ekf->state());
   }
   return 0;
 }
