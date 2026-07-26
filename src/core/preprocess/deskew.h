@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <sophus/se3.hpp>
+#include <utility>
 #include <vector>
 
 #include "imu/buffer.h"
@@ -13,6 +15,11 @@ struct StampedPose {
   uint64_t t_ns{0};
   Sophus::SE3d T_W_I;
 };
+
+// Absolute [t_start, t_end] the scan spans, from its per-point time offsets.
+// nullopt if the cloud carries no per-point times.
+std::optional<std::pair<uint64_t, uint64_t>> scan_time_window(
+    const PointCloud& cloud);
 
 // Build the IMU trajectory spanning a scan window [t_start_ns, t_end_ns] by
 // integrating the buffered IMU measurements, seeded from the EKF state at scan

@@ -13,6 +13,7 @@ add_executable(unit_tests
     local_map_test.cpp
     ros_deserializer_test.cpp
     params_test.cpp
+    point_cloud_test.cpp
 )
 
 target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)

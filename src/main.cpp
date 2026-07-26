@@ -1,7 +1,6 @@
 #include <spdlog/spdlog.h>
 
 #include <CLI/CLI.hpp>
-#include <algorithm>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -25,27 +24,6 @@
 #include "state/state.h"
 #include "types.h"
 #include "viz/visualizer.h"
-
-namespace {
-
-// Scan time window [t_start, t_end] from the per-point time offsets.
-std::optional<std::pair<uint64_t, uint64_t>> scan_window(const PointCloud& c) {
-  if (c.t_offset_ns.empty()) return std::nullopt;
-  const auto [lo, hi] =
-      std::minmax_element(c.t_offset_ns.begin(), c.t_offset_ns.end());
-  const uint64_t base = c.stamp.to_nsec();
-  return std::make_pair(base + *lo, base + *hi);
-}
-
-std::vector<Eigen::Vector3f> to_points(const PointCloud& c) {
-  std::vector<Eigen::Vector3f> pts;
-  pts.reserve(c.size());
-  for (size_t i = 0; i < c.size(); ++i)
-    pts.emplace_back(c.x[i], c.y[i], c.z[i]);
-  return pts;
-}
-
-}  // namespace
 
 int main(int argc, char** argv) {
   CLI::App app{"LiDAR-inertial SLAM (FAST-LIO2 style)"};
@@ -135,7 +113,7 @@ int main(int argc, char** argv) {
   const auto drain = [&] {
     while (!pending.empty()) {
       const PointCloud& cloud = pending.front();
-      const auto window = scan_window(cloud);
+      const auto window = scan_time_window(cloud);
       if (!window) {
         pending.pop_front();
         continue;
@@ -161,7 +139,7 @@ int main(int argc, char** argv) {
           voxel_downsample(undist, params.scan_voxel_leaf);
 
       const auto imu_window = imu_buffer.get_between(last_ref, t_end);
-      const std::vector<Eigen::Vector3f> scan_lidar = to_points(filtered);
+      const std::vector<Eigen::Vector3f> scan_lidar = filtered.xyz();
       const EkfResult r = ekf->process_scan(imu_window, scan_lidar);
       last_ref = t_end;
       ++scans;
@@ -269,8 +247,8 @@ int main(int argc, char** argv) {
                    ekf) {  // drop clouds that arrive before initialization
           PointCloud pc = loader->decode_cloud(data);
           // Shift the scan stamp onto the IMU clock by the lidar-to-IMU time
-          // offset, so scan_window, trajectory, deskew, and the IMU window all
-          // move together.
+          // offset, so the scan window, trajectory, deskew, and the IMU window
+          // all move together.
           pc.stamp = Timestamp::from_nsec(static_cast<uint64_t>(
               static_cast<int64_t>(pc.stamp.to_nsec()) + lidar_time_offset_ns));
           pending.push_back(std::move(pc));
