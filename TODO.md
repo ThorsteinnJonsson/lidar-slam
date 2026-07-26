@@ -32,6 +32,12 @@ gravity on S² so it tilts but keeps `|g|` fixed). The extrinsic blocks are only
 
 ## Done, with findings worth keeping
 
+- [x] Split into libraries: `slam_core` (algorithm, in `src/core/`), `slam_io` (dataset I/O, depends
+      on core), `slam_viz` (Rerun, behind the flag). Each has its own `src/<dir>/CMakeLists.txt`; top
+      level uses `add_subdirectory`. `tests/CMakeLists.txt` now links `slam_io` (brings core) instead
+      of re-listing `src/*.cpp`. Core's include root is `src/core` so includes stayed unchanged;
+      `types.h` moved to `src/core/`. STATIC libs.
+
 - [x] Multi-format datasets behind a `DatasetLoader` interface (`--format NTU_VIRAL|HILTI_22|FAST_LIVO2`).
       NTU eee_03 ATE 0.112 (unchanged), HILTI exp21 ATE 0.063 (with the real extrinsic from the
       FAST-LIVO2 repo), FAST-LIVO2 runs but ships no GT. Per-format quirks handled: Hesai per-point
