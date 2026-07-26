@@ -12,6 +12,7 @@ add_library(slam_core STATIC
     estimator/iekf.cpp
     estimator/outlier.cpp
     estimator/iterated_ekf.cpp
+    pipeline/slam_pipeline.cpp
 )
 
 target_include_directories(slam_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
