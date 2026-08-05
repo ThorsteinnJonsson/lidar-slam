@@ -1,6 +1,26 @@
-# lidar-slam
+# LiDAR-inertial SLAM
 
-LiDAR-inertial SLAM based on [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).
+A tightly-coupled LiDAR-inertial odometry and mapping system based on
+[FAST-LIO2](https://github.com/hku-mars/FAST_LIO).
+
+IMU measurements are preintegrated to propagate the state and covariance. Each new scan is deskewed against that trajectory, voxel-downsampled, and registered to an incremental kd-tree map through point-to-plane residuals with a Mahalanobis outlier gate. The estimator is an iterated error-state EKF over a 23-DOF state
+($[R, p, v, b_g, b_a, g, R_{ext}, p_{ext}]$, gravity on $S^2$).
+
+Datasets are read using a custom data loader and output is written to `.tum`-files. Omitting ROS was an intentional design choice to keep maximum flexibility. Visualization with Rerun can be enabled as a CMake option.
+
+All credit goes to FAST-LIO2 for the algorithm, this is merely a re-implementation from scratch. The only novel contribution in this implementation is the aforementioned Mahalanobis gating.\
+
+![Perspective view of the reconstructed map](doc/slam-hilti-exp21-perspective.png)
+
+_Perspective view of the reconstructed map and estimated trajectory. Sequence EXP21 from the Hilti '22 dataset._
+
+![Top-down view of the reconstructed map](doc/slam-hilti-exp21-top-view.png)
+
+_Top-down view of the same map._
+
+![Perspective view of the reconstructed map](doc/slam-ntu-eee_03.png)
+
+_Map constructed from NTU VIRAL sequence eee_03._
 
 ## Prerequisites
 
@@ -20,8 +40,7 @@ cmake --preset debug
 cmake --build --preset debug
 ```
 
-The binary lands in `build/<preset>/lidar_slam`. Build outputs are per-preset, so
-switching between them doesn't require a clean.
+The built binary can be found in `build/<preset>/lidar_slam`.
 
 ## Run
 
@@ -39,7 +58,7 @@ switching between them doesn't require a clean.
 | `--params`   | required | Tunable parameters, see [config/README.md](config/README.md). Use the matching per-format file. |
 | `--output`   | optional | Output directory. Defaults to `evaluation/<sequence>`.                                          |
 
-Run from the repository root: the paths above are relative.
+Run from the repository root, the paths above are relative.
 
 | Format       | LiDAR             | Params                   | Ground truth                   |
 | ------------ | ----------------- | ------------------------ | ------------------------------ |
@@ -49,19 +68,10 @@ Run from the repository root: the paths above are relative.
 
 ## Evaluation
 
-Each run writes three [TUM-format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
-trajectories (`timestamp tx ty tz qx qy qz qw`) into the output directory:
+Each run writes the output trajectory to `.tum`-format
+trajectories (`timestamp tx ty tz qx qy qz qw`) into the output directory (along with `gt.tum` if available).
 
-| File             | Contents                                                                       |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `trajectory.tum` | estimated IMU pose in the SLAM world frame                                     |
-| `prism.tum`      | estimate at the Leica prism (lever arm applied), for prism-to-prism comparison |
-| `gt.tum`         | Leica prism ground truth from `/leica/pose/relative` (position only)           |
-
-Metrics are computed offline with [evo](https://github.com/MichaelGrupp/evo).
-The ground truth is position-only and in its own frame, so align before comparing
-(`--align`, SE(3) Umeyama) and restrict the error to translation (`-r trans_part`).
-Install once into a virtualenv:
+Metrics can be computed offline with [evo](https://github.com/MichaelGrupp/evo).
 
 ```bash
 python3 -m venv ~/.venvs/evo   # needs python3-venv for ensurepip
