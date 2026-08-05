@@ -1,7 +1,5 @@
 #include "io/dataset_loader.h"
 
-#include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <vector>
 
@@ -74,47 +72,26 @@ class NtuViralLoader : public DatasetLoader {
 };
 
 // HILTI 2022: Hesai PandarXT-32 (PointCloud2 with absolute-second per-point
-// time) + Alphasense IMU. Ground truth is sparse control points in a sibling
-// .txt (`# ts id x y z qx qy qz qw`). The extrinsic is not in the sequence, so
-// it comes from params.
+// time) + Alphasense IMU. The shipped ground truth is just a handful of sparse
+// survey control points, not a trajectory, so we do not emit it. The extrinsic
+// is not in the sequence, so it comes from params.
 class HiltiLoader : public DatasetLoader {
  public:
   HiltiLoader(const std::filesystem::path& sequence, const Params& params)
-      : bag_(find_bag(sequence)), extrinsic_(params.extrinsic) {
-    gt_file_ = bag_;
-    gt_file_.replace_extension(".txt");
-  }
+      : bag_(find_bag(sequence)), extrinsic_(params.extrinsic) {}
 
   std::filesystem::path bag_path() const override { return bag_; }
   std::string imu_topic() const override { return "/alphasense/imu"; }
   std::string lidar_topic() const override { return "/hesai/pandar"; }
   Sophus::SE3d T_imu_lidar() const override { return extrinsic_; }
-  bool has_gt() const override { return std::filesystem::exists(gt_file_); }
+  bool has_gt() const override { return false; }
 
   PointCloud decode_cloud(std::span<const std::byte> data) const override {
     return deserialize_pointcloud2(data, PointTimeMode::AbsoluteSeconds);
   }
 
-  size_t write_external_gt(std::ostream& out) const override {
-    // TUM rows: `timestamp x y z qx qy qz qw` (the file's `# ...id...` header
-    // comment is misleading; there is no id column).
-    std::ifstream in(gt_file_);
-    std::string line;
-    size_t rows = 0;
-    while (std::getline(in, line)) {
-      if (line.empty() || line[0] == '#') continue;
-      std::istringstream ss(line);
-      double t, x, y, z;
-      if (!(ss >> t >> x >> y >> z)) continue;
-      out << t << ' ' << x << ' ' << y << ' ' << z << " 0 0 0 1\n";
-      ++rows;
-    }
-    return rows;
-  }
-
  private:
   std::filesystem::path bag_;
-  std::filesystem::path gt_file_;
   Sophus::SE3d extrinsic_;
 };
 
