@@ -3,12 +3,12 @@
 A tightly-coupled LiDAR-inertial odometry and mapping system based on
 [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).
 
-IMU measurements are preintegrated to propagate the state and covariance. Each new scan is deskewed against that trajectory, voxel-downsampled, and registered to an incremental kd-tree map through point-to-plane residuals with a Mahalanobis outlier gate. The estimator is an iterated error-state EKF over a 23-DOF state
+IMU measurements are forward-integrated by a midpoint scheme to propagate the state and covariance. Each new scan is deskewed against that trajectory, voxel-downsampled, and registered to an incremental kd-tree map through point-to-plane residuals with a Mahalanobis outlier gate. The estimator is an iterated error-state EKF over a 23-DOF state
 ($[R, p, v, b_g, b_a, g, R_{ext}, p_{ext}]$, gravity on $S^2$).
 
 Datasets are read using a custom data loader and output is written to `.tum`-files. Omitting ROS was an intentional design choice to keep maximum flexibility. Visualization with Rerun can be enabled as a CMake option.
 
-All credit goes to FAST-LIO2 for the algorithm, this is merely a re-implementation from scratch. The only novel contribution in this implementation is the aforementioned Mahalanobis gating.\
+All credit goes to FAST-LIO2 for the algorithm, this is merely a re-implementation from scratch. The only novel contribution in this implementation is the aforementioned Mahalanobis gating.
 
 ![Perspective view of the reconstructed map](doc/slam-hilti-exp21-perspective.png)
 
@@ -82,9 +82,10 @@ source ~/.venvs/evo/bin/activate.fish # Or equivalent for bash
 Absolute trajectory error (ATE) and relative pose error (RPE / drift):
 
 ```bash
-evo_ape tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part
-evo_rpe tum evaluation/gt.tum evaluation/prism.tum --align -r trans_part \
-        --delta 1 --delta_unit m
+evo_ape tum evaluation/eee_03/gt.tum evaluation/eee_03/estimate_gt.tum \
+        --align -r trans_part
+evo_rpe tum evaluation/eee_03/gt.tum evaluation/eee_03/estimate_gt.tum \
+        --align -r trans_part --delta 1 --delta_unit m
 ```
 
 Add `--plot` for the trajectory overlay and error-over-time plots.
@@ -146,7 +147,7 @@ ctest --test-dir build/debug -R <test_name> --output-on-failure
 Or run the test binary directly, with GoogleTest filters:
 
 ```bash
-./build/debug/tests/unit_tests --gtest_filter='Placeholder.*'
+./build/debug/tests/unit_tests --gtest_filter='IteratedEkf..*'
 ```
 
 ## Formatting
